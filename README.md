@@ -24,10 +24,10 @@ To generate the necessary client and server code from your `.proto` files, use t
     protoc --go-mqc_out=. your_service.proto
 ```
 
-The `protoc-gen-go-mqc` plugin must be built and available in your `PATH`. You can build it using:
+The `protoc-gen-go-mqc` plugin must be available in your `PATH`. You can install it by running:
 
 ```bash
-    go build -o $GOPATH/bin/protoc-gen-go-mqc ./cmd/protoc-gen-go-mqc
+    go install github.com/srand/mqc/cmd/protoc-gen-go-mqc@latest
 ```
 
 ## Examples
