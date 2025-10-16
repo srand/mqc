@@ -37,7 +37,6 @@ func NewTransport(options ...transport.DialOption) (mqc.Conn, error) {
 	}
 
 	mqttOptions := mqtt.NewClientOptions()
-	mqttOptions.SetAutoAckDisabled(true)
 
 	for _, addr := range dialOptions.Addrs {
 		mqttOptions.AddBroker(addr)

@@ -206,7 +206,7 @@ func (s *BidiStreamTestSuite) TestStreamSuccessServerClose() {
 	time.Sleep(100 * time.Millisecond) // Give some time for the server to process the close
 }
 
-func (s *BidiStreamTestSuite) TestStreamServerError() {
+func (s *BidiStreamTestSuite) TestStreamServerError_Recv() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -222,6 +222,27 @@ func (s *BidiStreamTestSuite) TestStreamServerError() {
 	reply, err := stream.Recv(ctx)
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), reply)
+	assert.Equal(s.T(), expected, err)
+}
+
+func (s *BidiStreamTestSuite) TestStreamServerError_Send() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	expected := errors.New("server error")
+
+	// Setup expected call
+	s.serverMock.On("Stream", mock.Anything, mock.Anything).Return(expected)
+
+	stream, err := s.client.Stream(ctx)
+	assert.NoError(s.T(), err)
+	assert.NotNil(s.T(), stream)
+
+	// Wait a moment to ensure the server is ready
+	time.Sleep(500 * time.Millisecond)
+
+	err = stream.Send(ctx, &TestRequest{Value: 1})
+	assert.Error(s.T(), err)
 	assert.Equal(s.T(), expected, err)
 }
 

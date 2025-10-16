@@ -23,6 +23,7 @@ type call struct {
 	controlTopic       string
 	server             bool
 	serializer         serialization.Serializer
+	err                error
 }
 
 func controlTopic(method mqc.Method, id string) string {
@@ -110,6 +111,10 @@ func (c *call) Invoke(ctx context.Context) error {
 }
 
 func (c *call) Recv(ctx context.Context) (*mqc.Message, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+
 	select {
 	case msg := <-c.receiver:
 		return msg, nil
@@ -121,6 +126,10 @@ func (c *call) Recv(ctx context.Context) (*mqc.Message, error) {
 func (c *call) Send(ctx context.Context, msg *mqc.Message) error {
 	if msg == nil {
 		return errors.New("message is nil")
+	}
+
+	if c.err != nil {
+		return c.err
 	}
 
 	var err error
@@ -179,10 +188,13 @@ func (c *call) subscribe(topic string, data bool) error {
 				return
 			}
 		}
+
+		if m.IsError() {
+			c.err = m.Error()
+		}
+
 		// Handle incoming messages
 		c.receiver <- &m
-
-		msg.Ack()
 	})
 	if token == nil {
 		return errors.New("failed to create subscription token")

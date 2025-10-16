@@ -118,7 +118,7 @@ func (s *ClientStreamTestSuite) TestStreamSuccess() {
 	assert.Equal(s.T(), expectedReply.Value, reply.Value)
 }
 
-func (s *ClientStreamTestSuite) TestStreamServerError() {
+func (s *ClientStreamTestSuite) TestStreamServerError_Recv() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -130,7 +130,17 @@ func (s *ClientStreamTestSuite) TestStreamServerError() {
 	expected := errors.New("server error")
 
 	// Setup expected call
-	s.serverMock.On("Stream", mock.Anything, mock.Anything).Return(expected)
+	s.serverMock.On("Stream", mock.Anything, mock.Anything).Return(expected).Run(func(args mock.Arguments) {
+		stream := args.Get(0).(mqc.ClientStreamServer[TestRequest, TestReply])
+
+		for {
+			_, err := stream.Recv(ctx)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			assert.NoError(s.T(), err)
+		}
+	})
 
 	stream, err := s.client.Stream(ctx)
 	assert.NoError(s.T(), err)
@@ -144,6 +154,28 @@ func (s *ClientStreamTestSuite) TestStreamServerError() {
 	reply, err := stream.CloseAndRecv(ctx)
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), reply)
+	assert.Equal(s.T(), expected, err)
+}
+
+func (s *ClientStreamTestSuite) TestStreamServerError_Send() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	request := &TestRequest{Value: 1}
+	expected := errors.New("server error")
+
+	// Setup expected call
+	s.serverMock.On("Stream", mock.Anything, mock.Anything).Return(expected)
+
+	stream, err := s.client.Stream(ctx)
+	assert.NoError(s.T(), err)
+	assert.NotNil(s.T(), stream)
+
+	// Wait a moment to ensure the server goroutine is running
+	time.Sleep(500 * time.Millisecond)
+
+	err = stream.Send(ctx, request)
+	assert.Error(s.T(), err)
 	assert.Equal(s.T(), expected, err)
 }
 
