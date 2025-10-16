@@ -51,7 +51,7 @@ func main() {
 	// Initiate the request
 	stream, err := client.GenerateIntegers(timeout, request)
 	if err != nil {
-		log.Fatalf("could not greet: %v", err)
+		log.Fatalf("could not generate integers: %v", err)
 	}
 
 	for {

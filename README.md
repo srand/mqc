@@ -1,4 +1,4 @@
-# RPC Library
+# MQC - An RPC Library
 
 This library provides tools and utilities for implementing Remote Procedure Call (RPC) mechanisms, enabling communication between distributed systems and services.
 
