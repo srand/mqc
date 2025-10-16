@@ -38,6 +38,9 @@ type BidiStreamClient[Req any, Res any] interface {
 	// The client can call Recv multiple times to receive multiple responses.
 	// When the server has finished sending responses, Recv returns io.EOF.
 	Recv(ctx context.Context) (*Res, error)
+
+	// Close the stream.
+	CloseSend() error
 }
 
 // ClientStreamServer represents a server-side stream for client-streaming RPCs.
@@ -65,11 +68,15 @@ type BidiStreamServer[Req any, Res any] interface {
 
 	// Recv receives a request from the client.
 	Recv(ctx context.Context) (*Req, error)
+
+	// CloseSend closes the stream for sending.
+	CloseSend() error
 }
 
 type clientStreamImpl[Req any, Res any] struct {
 	call       Call
 	serializer serialization.Serializer
+	eof        bool
 }
 
 func NewClientStreamClient[Req any, Res any](ctx context.Context, conn Conn, method Method) (ClientStreamClient[Req, Res], error) {
@@ -118,6 +125,10 @@ func (s *clientStreamImpl[Req, Res]) CloseAndRecv(ctx context.Context) (*Res, er
 }
 
 func (s *clientStreamImpl[Req, Res]) Recv(ctx context.Context) (*Res, error) {
+	if s.eof {
+		return nil, io.EOF
+	}
+
 	msg, err := s.call.Recv(ctx)
 	if err != nil {
 		return nil, err
@@ -128,6 +139,7 @@ func (s *clientStreamImpl[Req, Res]) Recv(ctx context.Context) (*Res, error) {
 	}
 
 	if msg.IsClose() {
+		s.eof = true
 		return nil, io.EOF
 	}
 
@@ -159,9 +171,14 @@ func (s *clientStreamImpl[Req, Res]) Send(ctx context.Context, req *Req) error {
 	return nil
 }
 
+func (s *clientStreamImpl[Req, Res]) CloseSend() error {
+	return s.call.Send(context.Background(), NewCloseMessage())
+}
+
 type serverStreamImpl[Req, Res any] struct {
 	call       Call
 	serializer serialization.Serializer
+	eof        bool
 }
 
 func NewClientStreamServer[Req, Res any](conn Conn, call Call) (ClientStreamServer[Req, Res], error) {
@@ -198,6 +215,10 @@ func NewBidiStreamServer[Req, Res any](conn Conn, call Call) (BidiStreamServer[R
 }
 
 func (s *serverStreamImpl[Req, Res]) Recv(ctx context.Context) (*Req, error) {
+	if s.eof {
+		return nil, io.EOF
+	}
+
 	msg, err := s.call.Recv(ctx)
 	if err != nil {
 		return nil, err
@@ -208,6 +229,7 @@ func (s *serverStreamImpl[Req, Res]) Recv(ctx context.Context) (*Req, error) {
 	}
 
 	if msg.IsClose() {
+		s.eof = true
 		return nil, io.EOF
 	}
 
@@ -237,4 +259,8 @@ func (s *serverStreamImpl[Req, Res]) Send(ctx context.Context, res *Res) error {
 		return err
 	}
 	return nil
+}
+
+func (s *serverStreamImpl[Req, Res]) CloseSend() error {
+	return s.call.Send(context.Background(), NewCloseMessage())
 }

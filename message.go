@@ -52,7 +52,6 @@ func NewDataMessage[Req any](req *Req, serializer serialization.Serializer) (*Me
 }
 
 func NewErrorMessage(err error, serializer serialization.Serializer) *Message {
-	println("NewErrorMessage called", err.Error()) // --- IGNORE ---
 	return &Message{
 		Type: MsgTypeError,
 		Data: []byte(err.Error()),

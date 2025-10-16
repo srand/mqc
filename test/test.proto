@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+option go_package = "../test";
+
+package test;
+
+message TestRequest {
+    int32 value = 1;
+}
+
+message TestReply {
+    int32 value = 1;
+}
+
+service RpcTest {
+  rpc Rpc(TestRequest) returns (TestReply) {}
+}
+
+service ServerStreamTest {
+  rpc Stream(TestRequest) returns (stream TestReply) {}
+}
+
+service ClientStreamTest {
+  rpc Stream(stream TestRequest) returns (TestReply) {}
+}
+
+service BidiStreamTest {
+  rpc Stream(stream TestRequest) returns (stream TestReply) {}
+}

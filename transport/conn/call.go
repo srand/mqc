@@ -2,6 +2,8 @@ package conn
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net"
 
 	"github.com/srand/mqc"
@@ -10,17 +12,23 @@ import (
 
 // Length-prefixed call
 type call struct {
-	conn    net.Conn
-	decoder serialization.Decoder
-	encoder serialization.Encoder
+	conn       net.Conn
+	decoder    serialization.Decoder
+	encoder    serialization.Encoder
+	receiver   chan *mqc.Message
+	serializer serialization.Serializer
 }
 
 func NewCall(conn net.Conn, serializer serialization.Serializer) *call {
-	return &call{
-		conn:    conn,
-		decoder: serializer.NewDecoder(conn),
-		encoder: serializer.NewEncoder(conn),
+	call := &call{
+		conn:       conn,
+		decoder:    serializer.NewDecoder(conn),
+		encoder:    serializer.NewEncoder(conn),
+		receiver:   make(chan *mqc.Message),
+		serializer: serializer,
 	}
+	go call.run()
+	return call
 }
 
 func (s *call) Close() error {
@@ -32,11 +40,36 @@ func (s *call) Send(ctx context.Context, msg *mqc.Message) error {
 }
 
 func (s *call) Recv(ctx context.Context) (*mqc.Message, error) {
-	var msg mqc.Message
+	var msg *mqc.Message
 
-	if err := s.decoder.Decode(&msg); err != nil {
-		return nil, err
+	select {
+	case msg = <-s.receiver:
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 
-	return &msg, nil
+	if msg == nil {
+		return nil, io.EOF
+	}
+
+	return msg, nil
+}
+
+func (c *call) run() {
+	defer close(c.receiver)
+	for {
+		var msg mqc.Message
+
+		if err := c.decoder.Decode(&msg); err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+
+			// Connection closed or error occurred
+			c.receiver <- mqc.NewErrorMessage(err, c.serializer)
+			return
+		}
+
+		c.receiver <- &msg
+	}
 }

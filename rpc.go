@@ -9,6 +9,14 @@ import (
 // Rpc performs a remote procedure call to the specified method with the given request.
 // It sends the request and waits for a response, returning the response object or an error.
 func Rpc[Req any, Res any](ctx context.Context, conn Conn, method Method, req *Req) (*Res, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if req == nil {
+		return nil, ErrNilRequest
+	}
+
 	serializer := conn.Serializer()
 
 	stream, err := conn.Invoke(ctx, method)
@@ -32,6 +40,10 @@ func Rpc[Req any, Res any](ctx context.Context, conn Conn, method Method, req *R
 	res, err := stream.Recv(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if res.IsError() {
+		return nil, res.Error()
 	}
 
 	resObj, err := GetMessageData[Res](res, serializer)

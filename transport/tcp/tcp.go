@@ -2,6 +2,7 @@ package tcp
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -69,7 +70,7 @@ func (t *tcpTransport) ensureConnected() error {
 }
 
 func (t *tcpTransport) accept(mux *yamux.Session) error {
-	context := context.Background()
+	ctx := context.Background()
 
 	for {
 		conn, err := mux.Accept()
@@ -79,7 +80,7 @@ func (t *tcpTransport) accept(mux *yamux.Session) error {
 
 		call := conn_transport.NewCall(conn, t.serializer)
 
-		msg, err := call.Recv(context)
+		msg, err := call.Recv(ctx)
 		if err != nil {
 			conn.Close()
 			continue
@@ -97,8 +98,19 @@ func (t *tcpTransport) accept(mux *yamux.Session) error {
 		}
 
 		go func() {
+			// Ensure that any panic is recovered
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Println("Recovered in server goroutine:", r)
+				}
+			}()
+
 			defer conn.Close()
-			handler(call)
+
+			err := handler(call)
+			if err != nil {
+				call.Send(ctx, mqc.NewErrorMessage(err, t.serializer))
+			}
 		}()
 	}
 }

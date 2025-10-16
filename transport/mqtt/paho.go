@@ -3,6 +3,7 @@ package mqtt
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -143,6 +144,12 @@ func (p *pahoTransport) subscribe(method mqc.Method) error {
 		}
 
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Println("Recovered in server goroutine:", r)
+				}
+			}()
+
 			defer call.Close()
 
 			ctx, cancel := context.WithTimeout(context.Background(), p.dialOptions.CallTimeout)
