@@ -14,6 +14,8 @@ import (
 )
 
 type pahoTransport struct {
+	transport.TransportEvents
+
 	dialOptions *transport.DialOptions
 	client      mqtt.Client
 	options     *mqtt.ClientOptions
@@ -69,6 +71,8 @@ func (p *pahoTransport) ensureConnected() error {
 		}
 	}
 
+	p.TriggerConnect(p)
+
 	return nil
 }
 
@@ -104,6 +108,13 @@ func (p *pahoTransport) RegisterHandler(method mqc.Method, handler mqc.MethodHan
 func (p *pahoTransport) UnregisterHandler(method mqc.Method) error {
 	delete(p.handlers, method)
 	return nil
+}
+
+func (p *pahoTransport) Dial() error {
+	if p.client.IsConnected() {
+		return fmt.Errorf("transport is already connected")
+	}
+	return p.ensureConnected()
 }
 
 func (p *pahoTransport) Serve() error {

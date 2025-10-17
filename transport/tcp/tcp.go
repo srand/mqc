@@ -15,6 +15,8 @@ import (
 )
 
 type tcpTransport struct {
+	transport.TransportEvents
+
 	dialOptions *transport.DialOptions
 	conn        net.Conn
 	mux         *yamux.Session
@@ -151,7 +153,18 @@ func (t *tcpTransport) UnregisterHandler(method mqc.Method) error {
 	return nil
 }
 
+func (t *tcpTransport) Dial() error {
+	if t.conn != nil {
+		return fmt.Errorf("transport is already connected")
+	}
+	return t.ensureConnected()
+}
+
 func (t *tcpTransport) Serve() error {
+	if t.conn != nil {
+		return fmt.Errorf("transport is already connected")
+	}
+
 	listener, err := net.Listen(t.dialOptions.Protocol, t.dialOptions.Addrs[0])
 	if err != nil {
 		return err
@@ -174,6 +187,14 @@ func (t *tcpTransport) Serve() error {
 				return
 			}
 			defer session.Close()
+
+			clientTransport := &tcpTransport{
+				conn:       conn,
+				mux:        session,
+				serializer: t.serializer,
+			}
+
+			t.TriggerConnect(clientTransport)
 
 			// Handle incoming streams
 			t.accept(session)
