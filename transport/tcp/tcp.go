@@ -8,7 +8,6 @@ import (
 
 	conn_transport "github.com/srand/mqc/transport/conn"
 
-	"github.com/google/uuid"
 	"github.com/hashicorp/yamux"
 	"github.com/srand/mqc"
 	"github.com/srand/mqc/serialization"
@@ -16,7 +15,6 @@ import (
 )
 
 type tcpTransport struct {
-	id          uuid.UUID
 	dialOptions *transport.DialOptions
 	conn        net.Conn
 	mux         *yamux.Session
@@ -42,7 +40,6 @@ func NewTransport(options ...transport.DialOption) (mqc.Transport, error) {
 	}
 
 	return &tcpTransport{
-		id:          uuid.New(),
 		dialOptions: dialOptions,
 		handlers:    make(map[mqc.Method]mqc.MethodHandler),
 		serializer:  serialization.NewProtoSerializer(),
