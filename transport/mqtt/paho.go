@@ -30,8 +30,11 @@ func NewTransport(options ...transport.DialOption) (mqc.Transport, error) {
 		ConnectTimeout: time.Second * 5,
 		CallTimeout:    time.Second * 5,
 	}
+
 	for _, opt := range options {
-		opt(dialOptions)
+		if err := opt(dialOptions); err != nil {
+			return nil, err
+		}
 	}
 
 	if len(dialOptions.Addrs) == 0 {
@@ -42,6 +45,10 @@ func NewTransport(options ...transport.DialOption) (mqc.Transport, error) {
 
 	for _, addr := range dialOptions.Addrs {
 		mqttOptions.AddBroker(addr)
+	}
+
+	if dialOptions.TlsConfig != nil {
+		mqttOptions.SetTLSConfig(dialOptions.TlsConfig)
 	}
 
 	client := mqtt.NewClient(mqttOptions)

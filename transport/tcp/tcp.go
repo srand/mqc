@@ -2,6 +2,7 @@ package tcp
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"time"
@@ -34,7 +35,9 @@ func NewTransport(options ...transport.DialOption) (mqc.Transport, error) {
 	}
 
 	for _, opt := range options {
-		opt(dialOptions)
+		if err := opt(dialOptions); err != nil {
+			return nil, err
+		}
 	}
 
 	if len(dialOptions.Addrs) == 0 {
@@ -51,7 +54,12 @@ func NewTransport(options ...transport.DialOption) (mqc.Transport, error) {
 func (t *tcpTransport) ensureConnected() error {
 	if t.conn == nil {
 		var err error
-		t.conn, err = net.Dial(t.dialOptions.Protocol, t.dialOptions.Addrs[0])
+
+		if t.dialOptions.TlsConfig != nil {
+			t.conn, err = tls.Dial(t.dialOptions.Protocol, t.dialOptions.Addrs[0], t.dialOptions.TlsConfig)
+		} else {
+			t.conn, err = net.Dial(t.dialOptions.Protocol, t.dialOptions.Addrs[0])
+		}
 		if err != nil {
 			return err
 		}
@@ -165,7 +173,14 @@ func (t *tcpTransport) Serve() error {
 		return fmt.Errorf("transport is already connected")
 	}
 
-	listener, err := net.Listen(t.dialOptions.Protocol, t.dialOptions.Addrs[0])
+	var err error
+	var listener net.Listener
+
+	if t.dialOptions.TlsConfig != nil {
+		listener, err = tls.Listen(t.dialOptions.Protocol, t.dialOptions.Addrs[0], t.dialOptions.TlsConfig)
+	} else {
+		listener, err = net.Listen(t.dialOptions.Protocol, t.dialOptions.Addrs[0])
+	}
 	if err != nil {
 		return err
 	}

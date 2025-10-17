@@ -30,6 +30,7 @@ func init() {
 func main() {
 	conn, err := tcp.NewTransport(
 		transport.WithAddress(*addr),
+		transport.WithSelfSignedCert(),
 	)
 	if err != nil {
 		panic(err)

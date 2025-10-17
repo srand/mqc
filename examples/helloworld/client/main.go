@@ -28,6 +28,7 @@ func init() {
 func main() {
 	transport, err := tcp.NewTransport(
 		transport.WithAddress(*addr),
+		transport.WithSelfSignedCert(),
 	)
 	if err != nil {
 		panic(err)
