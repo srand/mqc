@@ -16,38 +16,36 @@ import (
 )
 
 type tcpTransport struct {
-	transport.TransportEvents
-
-	dialOptions *transport.DialOptions
-	conn        net.Conn
-	mux         *yamux.Session
-	handlers    map[mqc.Method]mqc.MethodHandler
-	serializer  serialization.Serializer
+	options    *transport.TransportOptions
+	conn       net.Conn
+	mux        *yamux.Session
+	handlers   map[mqc.Method]mqc.MethodHandler
+	serializer serialization.Serializer
 }
 
 var _ mqc.Transport = (*tcpTransport)(nil)
 
-func NewTransport(options ...transport.DialOption) (mqc.Transport, error) {
-	dialOptions := &transport.DialOptions{
+func NewTransport(options ...transport.TransportOption) (mqc.Transport, error) {
+	transportOptions := &transport.TransportOptions{
 		ConnectTimeout: time.Second * 5,
 		CallTimeout:    time.Second * 5,
 		Protocol:       "tcp",
 	}
 
 	for _, opt := range options {
-		if err := opt(dialOptions); err != nil {
+		if err := opt(transportOptions); err != nil {
 			return nil, err
 		}
 	}
 
-	if len(dialOptions.Addrs) == 0 {
+	if len(transportOptions.Addrs) == 0 {
 		return nil, mqc.ErrNoAddress
 	}
 
 	return &tcpTransport{
-		dialOptions: dialOptions,
-		handlers:    make(map[mqc.Method]mqc.MethodHandler),
-		serializer:  serialization.NewProtoSerializer(),
+		options:    transportOptions,
+		handlers:   make(map[mqc.Method]mqc.MethodHandler),
+		serializer: serialization.NewProtoSerializer(),
 	}, nil
 }
 
@@ -55,10 +53,10 @@ func (t *tcpTransport) ensureConnected() error {
 	if t.conn == nil {
 		var err error
 
-		if t.dialOptions.TlsConfig != nil {
-			t.conn, err = tls.Dial(t.dialOptions.Protocol, t.dialOptions.Addrs[0], t.dialOptions.TlsConfig)
+		if t.options.TlsConfig != nil {
+			t.conn, err = tls.Dial(t.options.Protocol, t.options.Addrs[0], t.options.TlsConfig)
 		} else {
-			t.conn, err = net.Dial(t.dialOptions.Protocol, t.dialOptions.Addrs[0])
+			t.conn, err = net.Dial(t.options.Protocol, t.options.Addrs[0])
 		}
 		if err != nil {
 			return err
@@ -176,10 +174,10 @@ func (t *tcpTransport) Serve() error {
 	var err error
 	var listener net.Listener
 
-	if t.dialOptions.TlsConfig != nil {
-		listener, err = tls.Listen(t.dialOptions.Protocol, t.dialOptions.Addrs[0], t.dialOptions.TlsConfig)
+	if t.options.TlsConfig != nil {
+		listener, err = tls.Listen(t.options.Protocol, t.options.Addrs[0], t.options.TlsConfig)
 	} else {
-		listener, err = net.Listen(t.dialOptions.Protocol, t.dialOptions.Addrs[0])
+		listener, err = net.Listen(t.options.Protocol, t.options.Addrs[0])
 	}
 	if err != nil {
 		return err
@@ -209,7 +207,9 @@ func (t *tcpTransport) Serve() error {
 				serializer: t.serializer,
 			}
 
-			t.TriggerConnect(clientTransport)
+			if t.options.OnConnect != nil {
+				t.options.OnConnect(clientTransport)
+			}
 
 			// Handle incoming streams
 			t.accept(session)

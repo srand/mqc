@@ -38,5 +38,5 @@ func main() {
 	defer conn.Close()
 
 	helloworld.RegisterGreeterServer(conn, &server{})
-	conn.Serve()
+	panic(conn.Serve())
 }

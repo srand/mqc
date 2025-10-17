@@ -8,7 +8,7 @@ import (
 	"github.com/srand/mqc"
 )
 
-type DialOptions struct {
+type TransportOptions struct {
 	Addrs []string
 
 	// Timeout for the dial operation
@@ -23,47 +23,50 @@ type DialOptions struct {
 
 	// TLS configuration for secure connections
 	TlsConfig *tls.Config
+
+	// OnConnect is a callback function that is called when a connection is established.
+	OnConnect func(mqc.Transport)
 }
 
-type DialOption func(*DialOptions) error
+type TransportOption func(*TransportOptions) error
 
-func WithAddress(addr string) DialOption {
-	return func(opts *DialOptions) error {
+func WithAddress(addr string) TransportOption {
+	return func(opts *TransportOptions) error {
 		opts.Addrs = append(opts.Addrs, addr)
 		return nil
 	}
 }
 
-func WithConnectTimeout(d time.Duration) DialOption {
-	return func(opts *DialOptions) error {
+func WithConnectTimeout(d time.Duration) TransportOption {
+	return func(opts *TransportOptions) error {
 		opts.ConnectTimeout = d
 		return nil
 	}
 }
 
-func WithCallTimeout(d time.Duration) DialOption {
-	return func(opts *DialOptions) error {
+func WithCallTimeout(d time.Duration) TransportOption {
+	return func(opts *TransportOptions) error {
 		opts.CallTimeout = d
 		return nil
 	}
 }
 
-func WithProtocol(protocol string) DialOption {
-	return func(opts *DialOptions) error {
+func WithProtocol(protocol string) TransportOption {
+	return func(opts *TransportOptions) error {
 		opts.Protocol = protocol
 		return nil
 	}
 }
 
-func WithTLSConfig(tlsConfig *tls.Config) DialOption {
-	return func(opts *DialOptions) error {
+func WithTLSConfig(tlsConfig *tls.Config) TransportOption {
+	return func(opts *TransportOptions) error {
 		opts.TlsConfig = tlsConfig
 		return nil
 	}
 }
 
-func WithCertificateFile(certFile, keyFile string) DialOption {
-	return func(opts *DialOptions) error {
+func WithCertificateFile(certFile, keyFile string) TransportOption {
+	return func(opts *TransportOptions) error {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
 			return fmt.Errorf("failed to load certificate: %v", err)
@@ -78,8 +81,8 @@ func WithCertificateFile(certFile, keyFile string) DialOption {
 	}
 }
 
-func WithSelfSignedCert() DialOption {
-	return func(opts *DialOptions) error {
+func WithSelfSignedCert() TransportOption {
+	return func(opts *TransportOptions) error {
 		if opts.TlsConfig == nil {
 			opts.TlsConfig = &tls.Config{}
 		}
@@ -93,6 +96,19 @@ func WithSelfSignedCert() DialOption {
 		opts.TlsConfig.InsecureSkipVerify = true
 		opts.TlsConfig.Certificates = []tls.Certificate{cert}
 
+		return nil
+	}
+}
+
+func WithOnConnect(f func(mqc.Transport)) TransportOption {
+	return func(opts *TransportOptions) error {
+		if f == nil {
+			return fmt.Errorf("OnConnect function cannot be nil")
+		}
+		if opts.OnConnect != nil {
+			return fmt.Errorf("OnConnect function is already set")
+		}
+		opts.OnConnect = f
 		return nil
 	}
 }

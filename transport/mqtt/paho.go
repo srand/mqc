@@ -14,61 +14,59 @@ import (
 )
 
 type pahoTransport struct {
-	transport.TransportEvents
-
-	dialOptions *transport.DialOptions
-	client      mqtt.Client
-	options     *mqtt.ClientOptions
+	options     *transport.TransportOptions
+	mqttOptions *mqtt.ClientOptions
+	mqttClient  mqtt.Client
 	serializer  serialization.Serializer
 	handlers    map[mqc.Method]mqc.MethodHandler
 }
 
 var _ mqc.Transport = (*pahoTransport)(nil)
 
-func NewTransport(options ...transport.DialOption) (mqc.Transport, error) {
-	dialOptions := &transport.DialOptions{
+func NewTransport(options ...transport.TransportOption) (mqc.Transport, error) {
+	transportOptions := &transport.TransportOptions{
 		ConnectTimeout: time.Second * 5,
 		CallTimeout:    time.Second * 5,
 	}
 
 	for _, opt := range options {
-		if err := opt(dialOptions); err != nil {
+		if err := opt(transportOptions); err != nil {
 			return nil, err
 		}
 	}
 
-	if len(dialOptions.Addrs) == 0 {
+	if len(transportOptions.Addrs) == 0 {
 		return nil, mqc.ErrNoAddress
 	}
 
 	mqttOptions := mqtt.NewClientOptions()
 
-	for _, addr := range dialOptions.Addrs {
+	for _, addr := range transportOptions.Addrs {
 		mqttOptions.AddBroker(addr)
 	}
 
-	if dialOptions.TlsConfig != nil {
-		mqttOptions.SetTLSConfig(dialOptions.TlsConfig)
+	if transportOptions.TlsConfig != nil {
+		mqttOptions.SetTLSConfig(transportOptions.TlsConfig)
 	}
 
 	client := mqtt.NewClient(mqttOptions)
 	serializer := serialization.NewJSONSerializer()
 
 	return &pahoTransport{
-		dialOptions: dialOptions,
-		client:      client,
-		options:     mqttOptions,
+		options:     transportOptions,
+		mqttClient:  client,
+		mqttOptions: mqttOptions,
 		serializer:  serializer,
 		handlers:    make(map[mqc.Method]mqc.MethodHandler),
 	}, nil
 }
 
 func (p *pahoTransport) ensureConnected() error {
-	if p.client.IsConnected() {
+	if p.mqttClient.IsConnected() {
 		return nil
 	}
 
-	if token := p.client.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.mqttClient.Connect(); token.Wait() && token.Error() != nil {
 		return token.Error()
 	}
 
@@ -78,13 +76,15 @@ func (p *pahoTransport) ensureConnected() error {
 		}
 	}
 
-	p.TriggerConnect(p)
+	if p.options.OnConnect != nil {
+		p.options.OnConnect(p)
+	}
 
 	return nil
 }
 
 func (p *pahoTransport) Close() error {
-	p.client.Disconnect(0)
+	p.mqttClient.Disconnect(0)
 	return nil
 }
 
@@ -93,7 +93,7 @@ func (p *pahoTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Conn
 		return nil, err
 	}
 
-	call, err := newCallConn(p.serializer, p.client, method, uuid.New().String(), false)
+	call, err := newCallConn(p.serializer, p.mqttClient, method, uuid.New().String(), false)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func (p *pahoTransport) UnregisterHandler(method mqc.Method) error {
 }
 
 func (p *pahoTransport) Dial() error {
-	if p.client.IsConnected() {
+	if p.mqttClient.IsConnected() {
 		return fmt.Errorf("transport is already connected")
 	}
 	return p.ensureConnected()
@@ -139,7 +139,7 @@ func (p *pahoTransport) Serializer() serialization.Serializer {
 func (p *pahoTransport) subscribe(method mqc.Method) error {
 	topic := sharedControlTopic(method, "+")
 
-	token := p.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) {
+	token := p.mqttClient.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) {
 		var m mqc.Message
 
 		if err := p.serializer.Unmarshal(msg.Payload(), &m); err != nil {
@@ -155,7 +155,7 @@ func (p *pahoTransport) subscribe(method mqc.Method) error {
 			return
 		}
 
-		call, err := newCallConn(p.serializer, p.client, method, extractTopicId(msg.Topic()), true)
+		call, err := newCallConn(p.serializer, p.mqttClient, method, extractTopicId(msg.Topic()), true)
 		if err != nil {
 			return
 		}
@@ -169,7 +169,7 @@ func (p *pahoTransport) subscribe(method mqc.Method) error {
 
 			defer call.Close()
 
-			ctx, cancel := context.WithTimeout(context.Background(), p.dialOptions.CallTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), p.options.CallTimeout)
 			defer cancel()
 
 			// Ack the received message
@@ -177,7 +177,7 @@ func (p *pahoTransport) subscribe(method mqc.Method) error {
 				return
 			}
 
-			ctx, cancel = context.WithTimeout(context.Background(), p.dialOptions.CallTimeout)
+			ctx, cancel = context.WithTimeout(context.Background(), p.options.CallTimeout)
 			defer cancel()
 
 			err := handler(call)

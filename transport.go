@@ -30,6 +30,4 @@ type Transport interface {
 
 	// Serve starts the server to accept incoming connections and handle requests.
 	Serve() error
-
-	OnConnect(f func(Transport))
 }
