@@ -1,4 +1,4 @@
-package conn
+package common
 
 import (
 	"context"
@@ -22,7 +22,7 @@ type callConn struct {
 
 var _ mqc.Conn = (*callConn)(nil)
 
-func NewCallConn(conn net.Conn, serializer serialization.Serializer) *callConn {
+func NewConn(conn net.Conn, serializer serialization.Serializer) *callConn {
 	cc := &callConn{
 		conn:       conn,
 		decoder:    serializer.NewDecoder(conn),

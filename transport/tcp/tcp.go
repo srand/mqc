@@ -7,20 +7,18 @@ import (
 	"net"
 	"time"
 
-	conn_transport "github.com/srand/mqc/transport/conn"
-
 	"github.com/hashicorp/yamux"
 	"github.com/srand/mqc"
 	"github.com/srand/mqc/serialization"
 	"github.com/srand/mqc/transport"
+	"github.com/srand/mqc/transport/common"
 )
 
 type tcpTransport struct {
-	options    *transport.TransportOptions
-	conn       net.Conn
-	mux        *yamux.Session
-	handlers   map[mqc.Method]mqc.MethodHandler
-	serializer serialization.Serializer
+	common.BaseTransport
+
+	conn net.Conn
+	mux  *yamux.Session
 }
 
 var _ mqc.Transport = (*tcpTransport)(nil)
@@ -43,9 +41,11 @@ func NewTransport(options ...transport.TransportOption) (mqc.Transport, error) {
 	}
 
 	return &tcpTransport{
-		options:    transportOptions,
-		handlers:   make(map[mqc.Method]mqc.MethodHandler),
-		serializer: serialization.NewProtoSerializer(),
+		BaseTransport: common.BaseTransport{
+			Options:   *transportOptions,
+			Handlers:  make(map[mqc.Method]mqc.MethodHandler),
+			Serialize: serialization.NewProtoSerializer(),
+		},
 	}, nil
 }
 
@@ -53,10 +53,10 @@ func (t *tcpTransport) ensureConnected() error {
 	if t.conn == nil {
 		var err error
 
-		if t.options.TlsConfig != nil {
-			t.conn, err = tls.Dial(t.options.Protocol, t.options.Addrs[0], t.options.TlsConfig)
+		if t.Options.TlsConfig != nil {
+			t.conn, err = tls.Dial(t.Options.Protocol, t.Options.Addrs[0], t.Options.TlsConfig)
 		} else {
-			t.conn, err = net.Dial(t.options.Protocol, t.options.Addrs[0])
+			t.conn, err = net.Dial(t.Options.Protocol, t.Options.Addrs[0])
 		}
 		if err != nil {
 			return err
@@ -69,50 +69,9 @@ func (t *tcpTransport) ensureConnected() error {
 			return err
 		}
 
-		go t.accept(t.mux)
+		go t.AcceptMux(t.mux)
 	}
 	return nil
-}
-
-func (t *tcpTransport) accept(mux *yamux.Session) error {
-	ctx := context.Background()
-
-	for {
-		conn, err := mux.Accept()
-		if err != nil {
-			return err
-		}
-
-		call := conn_transport.NewCallConn(conn, t.serializer)
-
-		method, err := call.RecvMethod(ctx)
-		if err != nil {
-			conn.Close()
-			continue
-		}
-
-		handler, ok := t.handlers[method]
-		if !ok {
-			conn.Close()
-			continue
-		}
-
-		go func() {
-			// Ensure that any panic is recovered
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Println("Recovered in server goroutine:", r)
-				}
-			}()
-
-			defer conn.Close()
-
-			err := handler(call)
-			if err != nil {
-				call.SendError(ctx, err)
-			}
-		}()
-	}
 }
 
 func (t *tcpTransport) Close() error {
@@ -128,42 +87,18 @@ func (t *tcpTransport) Close() error {
 	return nil
 }
 
-func (t *tcpTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Conn, error) {
-	if err := t.ensureConnected(); err != nil {
-		return nil, err
-	}
-
-	conn, err := t.mux.Open()
-	if err != nil {
-		return nil, err
-	}
-
-	call := conn_transport.NewCallConn(conn, t.serializer)
-
-	err = call.SendMethod(ctx, method)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-
-	return call, nil
-}
-
-func (t *tcpTransport) RegisterHandler(method mqc.Method, handler mqc.MethodHandler) error {
-	t.handlers[method] = handler
-	return nil
-}
-
-func (t *tcpTransport) UnregisterHandler(method mqc.Method) error {
-	delete(t.handlers, method)
-	return nil
-}
-
 func (t *tcpTransport) Dial() error {
 	if t.conn != nil {
 		return fmt.Errorf("transport is already connected")
 	}
 	return t.ensureConnected()
+}
+
+func (t *tcpTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Conn, error) {
+	if err := t.ensureConnected(); err != nil {
+		return nil, err
+	}
+	return t.InvokeMux(ctx, t.mux, method)
 }
 
 func (t *tcpTransport) Serve() error {
@@ -174,10 +109,10 @@ func (t *tcpTransport) Serve() error {
 	var err error
 	var listener net.Listener
 
-	if t.options.TlsConfig != nil {
-		listener, err = tls.Listen(t.options.Protocol, t.options.Addrs[0], t.options.TlsConfig)
+	if t.Options.TlsConfig != nil {
+		listener, err = tls.Listen(t.Options.Protocol, t.Options.Addrs[0], t.Options.TlsConfig)
 	} else {
-		listener, err = net.Listen(t.options.Protocol, t.options.Addrs[0])
+		listener, err = net.Listen(t.Options.Protocol, t.Options.Addrs[0])
 	}
 	if err != nil {
 		return err
@@ -202,21 +137,21 @@ func (t *tcpTransport) Serve() error {
 			defer session.Close()
 
 			clientTransport := &tcpTransport{
-				conn:       conn,
-				mux:        session,
-				serializer: t.serializer,
+				BaseTransport: t.BaseTransport,
+				conn:          conn,
+				mux:           session,
 			}
 
-			if t.options.OnConnect != nil {
-				t.options.OnConnect(clientTransport)
+			if t.Options.OnConnect != nil {
+				t.Options.OnConnect(clientTransport)
 			}
 
 			// Handle incoming streams
-			t.accept(session)
+			t.AcceptMux(session)
 		}()
 	}
 }
 
 func (t *tcpTransport) Serializer() serialization.Serializer {
-	return t.serializer
+	return t.Serialize
 }

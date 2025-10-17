@@ -26,6 +26,9 @@ type TransportOptions struct {
 
 	// OnConnect is a callback function that is called when a connection is established.
 	OnConnect func(mqc.Transport)
+
+	// Origin is the allowed origin for CORS requests (used in HTTP transport)
+	Origin string
 }
 
 type TransportOption func(*TransportOptions) error
@@ -109,6 +112,13 @@ func WithOnConnect(f func(mqc.Transport)) TransportOption {
 			return fmt.Errorf("OnConnect function is already set")
 		}
 		opts.OnConnect = f
+		return nil
+	}
+}
+
+func WithOrigin(origin string) TransportOption {
+	return func(opts *TransportOptions) error {
+		opts.Origin = origin
 		return nil
 	}
 }

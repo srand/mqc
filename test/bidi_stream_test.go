@@ -10,6 +10,7 @@ import (
 
 	"github.com/srand/mqc"
 	"github.com/srand/mqc/transport"
+	"github.com/srand/mqc/transport/http"
 	"github.com/srand/mqc/transport/mqtt"
 	tpc "github.com/srand/mqc/transport/tcp"
 	"github.com/srand/mqc/transport/unix"
@@ -287,6 +288,27 @@ func TestBidiStreamOverMqtt(t *testing.T) {
 	defer clientConn.Close()
 
 	serverConn, err := mqtt.NewTransport(transport.WithAddress("localhost:1883"))
+	assert.NoError(t, err)
+	assert.NotNil(t, serverConn)
+	defer serverConn.Close()
+
+	suite.Run(t, NewBidiStreamTestSuite(clientConn, serverConn))
+}
+
+func TestBidiStreamOverHttp(t *testing.T) {
+	// Create two http transports
+	clientConn, err := http.NewWebSocketTransport(
+		transport.WithAddress("ws://localhost:8081"),
+		transport.WithOrigin("http://localhost/"),
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, clientConn)
+	defer clientConn.Close()
+
+	serverConn, err := http.NewWebSocketTransport(
+		transport.WithAddress("ws://localhost:8081"),
+		transport.WithOrigin("http://localhost/"),
+	)
 	assert.NoError(t, err)
 	assert.NotNil(t, serverConn)
 	defer serverConn.Close()

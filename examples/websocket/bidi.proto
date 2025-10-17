@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+option go_package = "examples/websocket";
+
+package websocket;
+
+message Integer {
+  int32 value = 1;
+}
+
+service Incrementer {
+  // Increments the incoming integer stream by 1
+  rpc Increment (stream Integer) returns (stream Integer) {}
+}
