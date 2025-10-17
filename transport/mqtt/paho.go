@@ -155,7 +155,7 @@ func (p *pahoTransport) subscribe(method mqc.Method) error {
 			defer cancel()
 
 			// Ack the received message
-			if err := call.Send(ctx, mqc.NewAckMessage()); err != nil {
+			if err := call.SendAck(ctx); err != nil {
 				return
 			}
 
@@ -164,9 +164,9 @@ func (p *pahoTransport) subscribe(method mqc.Method) error {
 
 			err := handler(call)
 			if err != nil {
-				call.Send(ctx, mqc.NewErrorMessage(err, p.serializer))
+				call.SendError(ctx, err)
 			} else {
-				call.Send(ctx, mqc.NewCloseMessage())
+				call.SendClose(ctx)
 			}
 		}()
 	})

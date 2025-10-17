@@ -80,18 +80,13 @@ func (t *tcpTransport) accept(mux *yamux.Session) error {
 
 		call := conn_transport.NewCallConn(conn, t.serializer)
 
-		msg, err := call.Recv(ctx)
+		method, err := call.RecvMethod(ctx)
 		if err != nil {
 			conn.Close()
 			continue
 		}
 
-		if !msg.IsCall() {
-			conn.Close()
-			continue
-		}
-
-		handler, ok := t.handlers[msg.Method()]
+		handler, ok := t.handlers[method]
 		if !ok {
 			conn.Close()
 			continue
@@ -109,7 +104,7 @@ func (t *tcpTransport) accept(mux *yamux.Session) error {
 
 			err := handler(call)
 			if err != nil {
-				call.Send(ctx, mqc.NewErrorMessage(err, t.serializer))
+				call.SendError(ctx, err)
 			}
 		}()
 	}
@@ -140,7 +135,7 @@ func (t *tcpTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Conn,
 
 	call := conn_transport.NewCallConn(conn, t.serializer)
 
-	err = call.Send(ctx, mqc.NewCallMessage(method))
+	err = call.SendMethod(ctx, method)
 	if err != nil {
 		conn.Close()
 		return nil, err

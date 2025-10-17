@@ -8,7 +8,7 @@ import (
 
 // Rpc performs a remote procedure call to the specified method with the given request.
 // It sends the request and waits for a response, returning the response object or an error.
-func Rpc[Req any, Res any](ctx context.Context, conn Transport, method Method, req *Req) (*Res, error) {
+func Rpc[Req any, Res any](ctx context.Context, transport Transport, method Method, req *Req) (*Res, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -17,71 +17,72 @@ func Rpc[Req any, Res any](ctx context.Context, conn Transport, method Method, r
 		return nil, ErrNilRequest
 	}
 
-	serializer := conn.Serializer()
+	serializer := transport.Serializer()
 
-	stream, err := conn.Invoke(ctx, method)
+	// Create a new connection for the RPC call
+	stream, err := transport.Invoke(ctx, method)
 	if err != nil {
 		return nil, err
 	}
 	defer stream.Close()
 
 	// Marshal request
-	msg, err := NewDataMessage(req, serializer)
+	data, err := serializer.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
 
 	// Send request
-	if err := stream.Send(ctx, msg); err != nil {
+	if err := stream.Send(ctx, data); err != nil {
 		return nil, err
 	}
 
 	// Receive response
-	res, err := stream.Recv(ctx)
+	data, err = stream.Recv(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if res.IsError() {
-		return nil, res.Error()
-	}
+	var res Res
 
-	resObj, err := GetMessageData[Res](res, serializer)
+	err = serializer.Unmarshal(data, &res)
 	if err != nil {
 		return nil, err
 	}
-	return resObj, nil
+
+	return &res, nil
 }
 
 // RpcServer handles an incoming RPC call on the server side.
 // It receives the request, processes it using the provided handler function,
 // and sends back the response or an error.
-func RpcServer[Req any, Res any](call Conn, serializer serialization.Serializer, handler func(req *Req) (*Res, error)) error {
+func RpcServer[Req any, Res any](conn Conn, serializer serialization.Serializer, handler func(req *Req) (*Res, error)) error {
 	ctx := context.Background()
 
 	// Receive request
-	req, err := call.Recv(ctx)
+	data, err := conn.Recv(ctx)
 	if err != nil {
 		return err
 	}
 
-	reqObj, err := GetMessageData[Req](req, serializer)
+	// Unmarshal request
+	var req Req
+	err = serializer.Unmarshal(data, &req)
 	if err != nil {
 		return err
 	}
 
 	// Handle request
-	resObj, err := handler(reqObj)
+	res, err := handler(&req)
 	if err != nil {
 		return err
 	}
 
-	// Marshal response
-	resMsg, err := NewDataMessage(resObj, serializer)
+	data, err = serializer.Marshal(res)
 	if err != nil {
 		return err
 	}
 
 	// Send response
-	return call.Send(ctx, resMsg)
+	return conn.Send(ctx, data)
 }

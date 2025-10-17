@@ -2,7 +2,6 @@ package mqc
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/srand/mqc/serialization"
 )
@@ -33,28 +32,15 @@ type Message struct {
 	Data []byte
 }
 
+func NewAckMessage() *Message {
+	return &Message{
+		Type: MsgTypeAck,
+	}
+}
 func NewCallMessage(method Method) *Message {
 	return &Message{
 		Type: MsgTypeCall,
 		Data: []byte(method),
-	}
-}
-
-func NewDataMessage[Req any](req *Req, serializer serialization.Serializer) (*Message, error) {
-	data, err := serializer.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	return &Message{
-		Type: MsgTypeData,
-		Data: data,
-	}, nil
-}
-
-func NewErrorMessage(err error, serializer serialization.Serializer) *Message {
-	return &Message{
-		Type: MsgTypeError,
-		Data: []byte(err.Error()),
 	}
 }
 
@@ -64,9 +50,17 @@ func NewCloseMessage() *Message {
 	}
 }
 
-func NewAckMessage() *Message {
+func NewDataMessage(data []byte) *Message {
 	return &Message{
-		Type: MsgTypeAck,
+		Type: MsgTypeData,
+		Data: data,
+	}
+}
+
+func NewErrorMessage(err error) *Message {
+	return &Message{
+		Type: MsgTypeError,
+		Data: []byte(err.Error()),
 	}
 }
 
@@ -78,16 +72,16 @@ func (m *Message) IsCall() bool {
 	return m.Type == MsgTypeCall
 }
 
+func (m *Message) IsClose() bool {
+	return m.Type == MsgTypeClose
+}
+
 func (m *Message) IsData() bool {
 	return m.Type == MsgTypeData
 }
 
 func (m *Message) IsError() bool {
 	return m.Type == MsgTypeError
-}
-
-func (m *Message) IsClose() bool {
-	return m.Type == MsgTypeClose
 }
 
 func (m *Message) Error() error {
@@ -101,13 +95,23 @@ func (m *Message) Method() Method {
 	return Method(string(m.Data))
 }
 
-func GetMessageData[T any](msg *Message, serializer serialization.Serializer) (*T, error) {
-	if !msg.IsData() {
-		return nil, fmt.Errorf("message is not a data message: %v+", msg)
-	}
-	var obj T
-	if err := serializer.Unmarshal(msg.Data, &obj); err != nil {
+func (m *Message) DataBytes() []byte {
+	return m.Data
+}
+
+func marshal[T any](serializer serialization.Serializer, data *T) ([]byte, error) {
+	bytes, err := serializer.Marshal(data)
+	if err != nil {
 		return nil, err
 	}
-	return &obj, nil
+	return bytes, nil
+}
+
+func unmarshal[T any](serializer serialization.Serializer, data []byte) (*T, error) {
+	var result T
+	err := serializer.Unmarshal(data, &result)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

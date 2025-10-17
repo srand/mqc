@@ -38,17 +38,42 @@ func (s *callConn) Close() error {
 	return s.conn.Close()
 }
 
-func (s *callConn) Send(ctx context.Context, msg *mqc.Message) error {
-	if msg == nil {
-		return errors.New("message is nil")
+func (s *callConn) Send(ctx context.Context, data []byte) error {
+	if data == nil {
+		return errors.New("data is nil")
 	}
 	if s.err != nil {
 		return s.err
 	}
+
+	return s.encoder.Encode(mqc.NewDataMessage(data))
+}
+
+func (s *callConn) sendControl(ctx context.Context, msg *mqc.Message) error {
+	if s.err != nil {
+		return s.err
+	}
+
 	return s.encoder.Encode(msg)
 }
 
-func (s *callConn) Recv(ctx context.Context) (*mqc.Message, error) {
+func (s *callConn) SendAck(ctx context.Context) error {
+	return s.sendControl(ctx, mqc.NewAckMessage())
+}
+
+func (s *callConn) SendClose(ctx context.Context) error {
+	return s.sendControl(ctx, mqc.NewCloseMessage())
+}
+
+func (s *callConn) SendError(ctx context.Context, err error) error {
+	return s.sendControl(ctx, mqc.NewErrorMessage(err))
+}
+
+func (s *callConn) SendMethod(ctx context.Context, method mqc.Method) error {
+	return s.sendControl(ctx, mqc.NewCallMessage(method))
+}
+
+func (s *callConn) Recv(ctx context.Context) ([]byte, error) {
 	var msg *mqc.Message
 
 	if s.err != nil {
@@ -61,7 +86,7 @@ func (s *callConn) Recv(ctx context.Context) (*mqc.Message, error) {
 		return nil, ctx.Err()
 	}
 
-	if msg == nil {
+	if msg == nil || msg.IsClose() {
 		return nil, io.EOF
 	}
 
@@ -70,7 +95,40 @@ func (s *callConn) Recv(ctx context.Context) (*mqc.Message, error) {
 		return nil, s.err
 	}
 
-	return msg, nil
+	if !msg.IsData() {
+		return nil, mqc.ErrProtocolViolation
+	}
+
+	return msg.DataBytes(), nil
+}
+
+func (s *callConn) RecvMethod(ctx context.Context) (mqc.Method, error) {
+	var msg *mqc.Message
+
+	if s.err != nil {
+		return "", s.err
+	}
+
+	select {
+	case msg = <-s.receiver:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
+	if msg == nil || msg.IsClose() {
+		return "", io.EOF
+	}
+
+	if msg.IsError() {
+		s.err = msg.Error()
+		return "", s.err
+	}
+
+	if !msg.IsCall() {
+		return "", mqc.ErrProtocolViolation
+	}
+
+	return msg.Method(), nil
 }
 
 func (c *callConn) run() {
@@ -84,7 +142,7 @@ func (c *callConn) run() {
 			}
 
 			// Connection closed or error occurred
-			c.receiver <- mqc.NewErrorMessage(err, c.serializer)
+			c.receiver <- mqc.NewErrorMessage(err)
 			return
 		}
 

@@ -2,6 +2,7 @@ package mqc
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/srand/mqc/serialization"
@@ -79,45 +80,47 @@ type clientStreamImpl[Req any, Res any] struct {
 	eof        bool
 }
 
-func NewClientStreamClient[Req any, Res any](ctx context.Context, conn Transport, method Method) (ClientStreamClient[Req, Res], error) {
-	call, err := conn.Invoke(ctx, method)
+func NewClientStreamClient[Req any, Res any](ctx context.Context, transport Transport, method Method) (ClientStreamClient[Req, Res], error) {
+	call, err := transport.Invoke(ctx, method)
 	if err != nil {
 		return nil, err
 	}
 
-	return &clientStreamImpl[Req, Res]{call: call, serializer: conn.Serializer()}, nil
+	return &clientStreamImpl[Req, Res]{call: call, serializer: transport.Serializer()}, nil
 }
 
-func NewServerStreamClient[Req, Res any](ctx context.Context, conn Transport, method Method, req *Req) (ServerStreamClient[Res], error) {
-	call, err := conn.Invoke(ctx, method)
+func NewServerStreamClient[Req, Res any](ctx context.Context, transport Transport, method Method, req *Req) (ServerStreamClient[Res], error) {
+	serializer := transport.Serializer()
+
+	call, err := transport.Invoke(ctx, method)
 	if err != nil {
 		return nil, err
 	}
 
-	msg, err := NewDataMessage(req, conn.Serializer())
+	data, err := serializer.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
 
-	err = call.Send(ctx, msg)
+	err = call.Send(ctx, data)
 	if err != nil {
 		return nil, err
 	}
 
-	return &clientStreamImpl[any, Res]{call: call, serializer: conn.Serializer()}, nil
+	return &clientStreamImpl[any, Res]{call: call, serializer: serializer}, nil
 }
 
-func NewBidiStreamClient[Req any, Res any](ctx context.Context, conn Transport, method Method) (BidiStreamClient[Req, Res], error) {
-	call, err := conn.Invoke(ctx, method)
+func NewBidiStreamClient[Req any, Res any](ctx context.Context, transport Transport, method Method) (BidiStreamClient[Req, Res], error) {
+	call, err := transport.Invoke(ctx, method)
 	if err != nil {
 		return nil, err
 	}
-	return &clientStreamImpl[Req, Res]{call: call, serializer: conn.Serializer()}, nil
+	return &clientStreamImpl[Req, Res]{call: call, serializer: transport.Serializer()}, nil
 }
 
 func (s *clientStreamImpl[Req, Res]) CloseAndRecv(ctx context.Context) (*Res, error) {
 	// Send close signal
-	if err := s.call.Send(ctx, NewCloseMessage()); err != nil {
+	if err := s.call.SendClose(ctx); err != nil {
 		return nil, err
 	}
 
@@ -129,50 +132,46 @@ func (s *clientStreamImpl[Req, Res]) Recv(ctx context.Context) (*Res, error) {
 		return nil, io.EOF
 	}
 
-	msg, err := s.call.Recv(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if msg.IsError() {
-		return nil, msg.Error()
-	}
-
-	if msg.IsClose() {
+	data, err := s.call.Recv(ctx)
+	if errors.Is(err, io.EOF) {
 		s.eof = true
 		return nil, io.EOF
 	}
 
-	return GetMessageData[Res](msg, s.serializer)
+	if err != nil {
+		return nil, err
+	}
+
+	return unmarshal[Res](s.serializer, data)
 }
 
 func (s *clientStreamImpl[Req, Res]) SendAndClose(ctx context.Context, res *Res) error {
-	msg, err := NewDataMessage(res, s.serializer)
+	data, err := marshal[Res](s.serializer, res)
 	if err != nil {
 		return err
 	}
-	if err := s.call.Send(ctx, msg); err != nil {
+	if err := s.call.Send(ctx, data); err != nil {
 		return err
 	}
-	if err := s.call.Send(ctx, NewCloseMessage()); err != nil {
+	if err := s.call.SendClose(ctx); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (s *clientStreamImpl[Req, Res]) Send(ctx context.Context, req *Req) error {
-	msg, err := NewDataMessage(req, s.serializer)
+	data, err := marshal[Req](s.serializer, req)
 	if err != nil {
 		return err
 	}
-	if err := s.call.Send(ctx, msg); err != nil {
+	if err := s.call.Send(ctx, data); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (s *clientStreamImpl[Req, Res]) CloseSend() error {
-	return s.call.Send(context.Background(), NewCloseMessage())
+	return s.call.SendClose(context.Background())
 }
 
 type serverStreamImpl[Req, Res any] struct {
@@ -181,28 +180,20 @@ type serverStreamImpl[Req, Res any] struct {
 	eof        bool
 }
 
-func NewClientStreamServer[Req, Res any](conn Transport, call Conn) (ClientStreamServer[Req, Res], error) {
-	return &serverStreamImpl[Req, Res]{call: call, serializer: conn.Serializer()}, nil
+func NewClientStreamServer[Req, Res any](transport Transport, call Conn) (ClientStreamServer[Req, Res], error) {
+	return &serverStreamImpl[Req, Res]{call: call, serializer: transport.Serializer()}, nil
 }
 
-func NewServerStreamServer[Req, Res any](conn Transport, call Conn) (ServerStreamServer[Res], *Req, error) {
-	stream := &serverStreamImpl[any, Res]{call: call, serializer: conn.Serializer()}
+func NewServerStreamServer[Req, Res any](transport Transport, call Conn) (ServerStreamServer[Res], *Req, error) {
+	stream := &serverStreamImpl[any, Res]{call: call, serializer: transport.Serializer()}
 
-	// ReaD initial request message
-	msg, err := call.Recv(context.Background())
+	// Read initial request message
+	data, err := call.Recv(context.Background())
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if msg.IsError() {
-		return nil, nil, msg.Error()
-	}
-
-	if msg.IsClose() {
-		return nil, nil, io.EOF
-	}
-
-	req, err := GetMessageData[Req](msg, conn.Serializer())
+	req, err := unmarshal[Req](transport.Serializer(), data)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -210,8 +201,8 @@ func NewServerStreamServer[Req, Res any](conn Transport, call Conn) (ServerStrea
 	return stream, req, nil
 }
 
-func NewBidiStreamServer[Req, Res any](conn Transport, call Conn) (BidiStreamServer[Req, Res], error) {
-	return &serverStreamImpl[Req, Res]{call: call, serializer: conn.Serializer()}, nil
+func NewBidiStreamServer[Req, Res any](transport Transport, call Conn) (BidiStreamServer[Req, Res], error) {
+	return &serverStreamImpl[Req, Res]{call: call, serializer: transport.Serializer()}, nil
 }
 
 func (s *serverStreamImpl[Req, Res]) Recv(ctx context.Context) (*Req, error) {
@@ -219,48 +210,43 @@ func (s *serverStreamImpl[Req, Res]) Recv(ctx context.Context) (*Req, error) {
 		return nil, io.EOF
 	}
 
-	msg, err := s.call.Recv(ctx)
+	data, err := s.call.Recv(ctx)
+	if errors.Is(err, io.EOF) {
+		s.eof = true
+		return nil, io.EOF
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	if msg.IsError() {
-		return nil, msg.Error()
-	}
-
-	if msg.IsClose() {
-		s.eof = true
-		return nil, io.EOF
-	}
-
-	return GetMessageData[Req](msg, s.serializer)
+	return unmarshal[Req](s.serializer, data)
 }
 
 func (s *serverStreamImpl[Req, Res]) SendAndClose(ctx context.Context, res *Res) error {
-	msg, err := NewDataMessage(res, s.serializer)
+	data, err := marshal[Res](s.serializer, res)
 	if err != nil {
 		return err
 	}
-	if err := s.call.Send(ctx, msg); err != nil {
+	if err := s.call.Send(ctx, data); err != nil {
 		return err
 	}
-	if err := s.call.Send(ctx, NewCloseMessage()); err != nil {
+	if err := s.call.SendClose(ctx); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (s *serverStreamImpl[Req, Res]) Send(ctx context.Context, res *Res) error {
-	msg, err := NewDataMessage(res, s.serializer)
+	data, err := marshal[Res](s.serializer, res)
 	if err != nil {
 		return err
 	}
-	if err := s.call.Send(ctx, msg); err != nil {
+	if err := s.call.Send(ctx, data); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (s *serverStreamImpl[Req, Res]) CloseSend() error {
-	return s.call.Send(context.Background(), NewCloseMessage())
+	return s.call.SendClose(context.Background())
 }

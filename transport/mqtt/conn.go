@@ -3,6 +3,7 @@ package mqtt
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 
 	"github.com/srand/mqc"
@@ -103,64 +104,111 @@ func (c *callConn) Invoke(ctx context.Context) error {
 	}
 
 	// Wait for an acknowledgment
-	ackMsg, err := c.Recv(ctx)
-	if err != nil {
-		return err
-	}
-	if !ackMsg.IsAck() {
-		return mqc.ErrProtocolViolation
-	}
-	return nil
+	return c.RecvAck(ctx)
 }
 
-func (c *callConn) Recv(ctx context.Context) (*mqc.Message, error) {
+func (c *callConn) Recv(ctx context.Context) ([]byte, error) {
 	if c.err != nil {
 		return nil, c.err
 	}
 
+	var msg *mqc.Message
+
 	select {
-	case msg := <-c.receiver:
-		return msg, nil
+	case msg = <-c.receiver:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+
+	if msg == nil || msg.IsClose() {
+		return nil, io.EOF
+	}
+
+	if msg.IsError() {
+		c.err = msg.Error()
+		return nil, c.err
+	}
+
+	return msg.DataBytes(), nil
 }
 
-func (c *callConn) Send(ctx context.Context, msg *mqc.Message) error {
+func (c *callConn) RecvAck(ctx context.Context) error {
+	if c.err != nil {
+		return c.err
+	}
+
+	var msg *mqc.Message
+
+	select {
+	case msg = <-c.receiver:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	if msg == nil {
-		return errors.New("message is nil")
+		return io.EOF
+	}
+
+	if !msg.IsAck() {
+		return mqc.ErrProtocolViolation
+	}
+
+	return nil
+}
+
+func (c *callConn) Send(ctx context.Context, data []byte) error {
+	if data == nil {
+		return errors.New("data is nil")
 	}
 
 	if c.err != nil {
 		return c.err
 	}
 
-	var err error
 	var topic string
-	var payload []byte
-
-	if msg.IsData() {
-		if c.server {
-			topic = c.serverDataTopic
-		} else {
-			topic = c.clientDataTopic
-		}
-
-		payload = msg.Data
+	if c.server {
+		topic = c.serverDataTopic
 	} else {
-		if c.server {
-			topic = c.serverControlTopic
-		} else {
-			topic = c.clientControlTopic
-		}
-
-		payload, err = c.serializer.Marshal(msg)
-		if err != nil {
-			return err
-		}
+		topic = c.clientDataTopic
 	}
 
-	token := c.client.Publish(topic, 2, false, payload)
+	return c.publish(ctx, topic, data)
+}
+
+func (c *callConn) sendControl(ctx context.Context, msg *mqc.Message) error {
+	if c.err != nil {
+		return c.err
+	}
+
+	var topic string
+	if c.server {
+		topic = c.serverControlTopic
+	} else {
+		topic = c.clientControlTopic
+	}
+
+	data, err := c.serializer.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	return c.publish(ctx, topic, data)
+}
+
+func (c *callConn) SendAck(ctx context.Context) error {
+	return c.sendControl(ctx, mqc.NewAckMessage())
+}
+
+func (c *callConn) SendClose(ctx context.Context) error {
+	return c.sendControl(ctx, mqc.NewCloseMessage())
+}
+
+func (c *callConn) SendError(ctx context.Context, err error) error {
+	return c.sendControl(ctx, mqc.NewErrorMessage(err))
+}
+
+func (c *callConn) publish(ctx context.Context, topic string, data []byte) error {
+	token := c.client.Publish(topic, 2, false, data)
 
 	done := make(chan error)
 	go func() {
@@ -177,6 +225,7 @@ func (c *callConn) Send(ctx context.Context, msg *mqc.Message) error {
 	case err := <-done:
 		return err
 	}
+
 }
 
 func (c *callConn) subscribe(topic string, data bool) error {

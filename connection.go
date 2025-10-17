@@ -5,11 +5,14 @@ import (
 )
 
 type Conn interface {
-	// Send sends a message to the stream.
-	Send(ctx context.Context, msg *Message) error
+	// Send sends data to the stream.
+	Send(ctx context.Context, data []byte) error
 
-	// Recv receives a message from the stream.
-	Recv(ctx context.Context) (*Message, error)
+	// SendClose sends a close message to the stream.
+	SendClose(ctx context.Context) error
+
+	// Recv receives data from the stream.
+	Recv(ctx context.Context) ([]byte, error)
 
 	// Close closes the stream.
 	Close() error
