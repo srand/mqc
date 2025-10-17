@@ -18,12 +18,12 @@ type pahoTransport struct {
 	client      mqtt.Client
 	options     *mqtt.ClientOptions
 	serializer  serialization.Serializer
-	handlers    map[mqc.Method]mqc.ServerHandler
+	handlers    map[mqc.Method]mqc.MethodHandler
 }
 
-var _ mqc.Conn = (*pahoTransport)(nil)
+var _ mqc.Transport = (*pahoTransport)(nil)
 
-func NewTransport(options ...transport.DialOption) (mqc.Conn, error) {
+func NewTransport(options ...transport.DialOption) (mqc.Transport, error) {
 	dialOptions := &transport.DialOptions{
 		ConnectTimeout: time.Second * 5,
 		CallTimeout:    time.Second * 5,
@@ -50,7 +50,7 @@ func NewTransport(options ...transport.DialOption) (mqc.Conn, error) {
 		client:      client,
 		options:     mqttOptions,
 		serializer:  serializer,
-		handlers:    make(map[mqc.Method]mqc.ServerHandler),
+		handlers:    make(map[mqc.Method]mqc.MethodHandler),
 	}, nil
 }
 
@@ -77,12 +77,12 @@ func (p *pahoTransport) Close() error {
 	return nil
 }
 
-func (p *pahoTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Call, error) {
+func (p *pahoTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Conn, error) {
 	if err := p.ensureConnected(); err != nil {
 		return nil, err
 	}
 
-	call, err := newCall(p.serializer, p.client, method, uuid.New().String(), false)
+	call, err := newCallConn(p.serializer, p.client, method, uuid.New().String(), false)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (p *pahoTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Call
 	return call, nil
 }
 
-func (p *pahoTransport) RegisterHandler(method mqc.Method, handler mqc.ServerHandler) error {
+func (p *pahoTransport) RegisterHandler(method mqc.Method, handler mqc.MethodHandler) error {
 	p.handlers[method] = handler
 	return nil
 }
@@ -137,7 +137,7 @@ func (p *pahoTransport) subscribe(method mqc.Method) error {
 			return
 		}
 
-		call, err := newCall(p.serializer, p.client, method, extractTopicId(msg.Topic()), true)
+		call, err := newCallConn(p.serializer, p.client, method, extractTopicId(msg.Topic()), true)
 		if err != nil {
 			return
 		}

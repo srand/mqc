@@ -7,6 +7,7 @@ package test
 import (
 	"context"
 	"fmt"
+
 	"github.com/srand/mqc"
 )
 
@@ -43,10 +44,10 @@ type BidiStreamTestServer interface {
 }
 
 type rpcTestClient struct {
-	conn mqc.Conn
+	conn mqc.Transport
 }
 
-func NewRpcTestClient(conn mqc.Conn) *rpcTestClient {
+func NewRpcTestClient(conn mqc.Transport) *rpcTestClient {
 	return &rpcTestClient{conn: conn}
 }
 
@@ -55,10 +56,10 @@ func (c *rpcTestClient) Rpc(ctx context.Context, req *TestRequest) (*TestReply, 
 }
 
 type serverStreamTestClient struct {
-	conn mqc.Conn
+	conn mqc.Transport
 }
 
-func NewServerStreamTestClient(conn mqc.Conn) *serverStreamTestClient {
+func NewServerStreamTestClient(conn mqc.Transport) *serverStreamTestClient {
 	return &serverStreamTestClient{conn: conn}
 }
 
@@ -67,10 +68,10 @@ func (c *serverStreamTestClient) Stream(ctx context.Context, req *TestRequest) (
 }
 
 type clientStreamTestClient struct {
-	conn mqc.Conn
+	conn mqc.Transport
 }
 
-func NewClientStreamTestClient(conn mqc.Conn) *clientStreamTestClient {
+func NewClientStreamTestClient(conn mqc.Transport) *clientStreamTestClient {
 	return &clientStreamTestClient{conn: conn}
 }
 
@@ -79,10 +80,10 @@ func (c *clientStreamTestClient) Stream(ctx context.Context) (mqc.ClientStreamCl
 }
 
 type bidiStreamTestClient struct {
-	conn mqc.Conn
+	conn mqc.Transport
 }
 
-func NewBidiStreamTestClient(conn mqc.Conn) *bidiStreamTestClient {
+func NewBidiStreamTestClient(conn mqc.Transport) *bidiStreamTestClient {
 	return &bidiStreamTestClient{conn: conn}
 }
 
@@ -96,8 +97,8 @@ func (s *UnimplementedRpcTestServer) Rpc(req *TestRequest) (*TestReply, error) {
 	return nil, fmt.Errorf("method Rpc not implemented")
 }
 
-func RegisterRpcTestServer(conn mqc.Conn, server RpcTestServer) {
-	conn.RegisterHandler("RpcTest/Rpc", func(call mqc.Call) error {
+func RegisterRpcTestServer(conn mqc.Transport, server RpcTestServer) {
+	conn.RegisterHandler("RpcTest/Rpc", func(call mqc.Conn) error {
 		return mqc.RpcServer(call, conn.Serializer(), func(req *TestRequest) (*TestReply, error) {
 			return server.Rpc(req)
 		})
@@ -110,8 +111,8 @@ func (s *UnimplementedServerStreamTestServer) Stream(req *TestRequest, stream mq
 	return fmt.Errorf("method Stream not implemented")
 }
 
-func RegisterServerStreamTestServer(conn mqc.Conn, server ServerStreamTestServer) {
-	conn.RegisterHandler("ServerStreamTest/Stream", func(call mqc.Call) error {
+func RegisterServerStreamTestServer(conn mqc.Transport, server ServerStreamTestServer) {
+	conn.RegisterHandler("ServerStreamTest/Stream", func(call mqc.Conn) error {
 		stream, req, err := mqc.NewServerStreamServer[TestRequest, TestReply](conn, call)
 		if err != nil {
 			return err
@@ -126,8 +127,8 @@ func (s *UnimplementedClientStreamTestServer) Stream(stream mqc.ClientStreamServ
 	return fmt.Errorf("method Stream not implemented")
 }
 
-func RegisterClientStreamTestServer(conn mqc.Conn, server ClientStreamTestServer) {
-	conn.RegisterHandler("ClientStreamTest/Stream", func(call mqc.Call) error {
+func RegisterClientStreamTestServer(conn mqc.Transport, server ClientStreamTestServer) {
+	conn.RegisterHandler("ClientStreamTest/Stream", func(call mqc.Conn) error {
 		stream, err := mqc.NewClientStreamServer[TestRequest, TestReply](conn, call)
 		if err != nil {
 			return err
@@ -142,8 +143,8 @@ func (s *UnimplementedBidiStreamTestServer) Stream(stream mqc.BidiStreamServer[T
 	return fmt.Errorf("method Stream not implemented")
 }
 
-func RegisterBidiStreamTestServer(conn mqc.Conn, server BidiStreamTestServer) {
-	conn.RegisterHandler("BidiStreamTest/Stream", func(call mqc.Call) error {
+func RegisterBidiStreamTestServer(conn mqc.Transport, server BidiStreamTestServer) {
+	conn.RegisterHandler("BidiStreamTest/Stream", func(call mqc.Conn) error {
 		stream, err := mqc.NewBidiStreamServer[TestRequest, TestReply](conn, call)
 		if err != nil {
 			return err

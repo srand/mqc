@@ -10,8 +10,8 @@ import (
 	"github.com/srand/mqc/serialization"
 )
 
-// Length-prefixed call
-type call struct {
+// Represents a call connection over net.Conn transport
+type callConn struct {
 	conn       net.Conn
 	decoder    serialization.Decoder
 	encoder    serialization.Encoder
@@ -20,23 +20,25 @@ type call struct {
 	err        error
 }
 
-func NewCall(conn net.Conn, serializer serialization.Serializer) *call {
-	call := &call{
+var _ mqc.Conn = (*callConn)(nil)
+
+func NewCallConn(conn net.Conn, serializer serialization.Serializer) *callConn {
+	cc := &callConn{
 		conn:       conn,
 		decoder:    serializer.NewDecoder(conn),
 		encoder:    serializer.NewEncoder(conn),
 		receiver:   make(chan *mqc.Message),
 		serializer: serializer,
 	}
-	go call.run()
-	return call
+	go cc.run()
+	return cc
 }
 
-func (s *call) Close() error {
+func (s *callConn) Close() error {
 	return s.conn.Close()
 }
 
-func (s *call) Send(ctx context.Context, msg *mqc.Message) error {
+func (s *callConn) Send(ctx context.Context, msg *mqc.Message) error {
 	if msg == nil {
 		return errors.New("message is nil")
 	}
@@ -46,7 +48,7 @@ func (s *call) Send(ctx context.Context, msg *mqc.Message) error {
 	return s.encoder.Encode(msg)
 }
 
-func (s *call) Recv(ctx context.Context) (*mqc.Message, error) {
+func (s *callConn) Recv(ctx context.Context) (*mqc.Message, error) {
 	var msg *mqc.Message
 
 	if s.err != nil {
@@ -71,7 +73,7 @@ func (s *call) Recv(ctx context.Context) (*mqc.Message, error) {
 	return msg, nil
 }
 
-func (c *call) run() {
+func (c *callConn) run() {
 	defer close(c.receiver)
 	for {
 		var msg mqc.Message

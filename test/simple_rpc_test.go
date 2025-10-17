@@ -19,13 +19,13 @@ import (
 
 type RpcTestSuite struct {
 	suite.Suite
-	clientConn mqc.Conn
-	serverConn mqc.Conn
+	clientConn mqc.Transport
+	serverConn mqc.Transport
 	serverMock *RpcTestServerMock
 	client     RpcTestClient
 }
 
-func NewRpcTestSuite(clientConn, serverConn mqc.Conn) *RpcTestSuite {
+func NewRpcTestSuite(clientConn, serverConn mqc.Transport) *RpcTestSuite {
 	client := NewRpcTestClient(clientConn)
 
 	return &RpcTestSuite{

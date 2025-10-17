@@ -26,15 +26,15 @@ func init() {
 }
 
 func main() {
-	conn, err := tcp.NewTransport(
+	transport, err := tcp.NewTransport(
 		transport.WithAddress(*addr),
 	)
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Close()
+	defer transport.Close()
 
-	client := helloworld.NewGreeterClient(conn)
+	client := helloworld.NewGreeterClient(transport)
 	ctx := context.Background()
 
 	resp, err := client.SayHello(ctx, &helloworld.HelloRequest{Name: *name})

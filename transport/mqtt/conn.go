@@ -11,7 +11,8 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-type call struct {
+// Represents a call connection over MQTT transport
+type callConn struct {
 	client             mqtt.Client
 	method             mqc.Method
 	receiver           chan *mqc.Message
@@ -25,6 +26,8 @@ type call struct {
 	serializer         serialization.Serializer
 	err                error
 }
+
+var _ mqc.Conn = (*callConn)(nil)
 
 func controlTopic(method mqc.Method, id string) string {
 	return "MQC/" + method.String() + "/Control/" + id
@@ -50,9 +53,9 @@ func extractTopicId(topic string) string {
 	return parts[len(parts)-1]
 }
 
-func newCall(serializer serialization.Serializer, client mqtt.Client, method mqc.Method, id string, server bool) (*call, error) {
+func newCallConn(serializer serialization.Serializer, client mqtt.Client, method mqc.Method, id string, server bool) (*callConn, error) {
 	receiver := make(chan *mqc.Message, 1)
-	call := &call{
+	cc := &callConn{
 		client:             client,
 		receiver:           receiver,
 		method:             method,
@@ -67,24 +70,24 @@ func newCall(serializer serialization.Serializer, client mqtt.Client, method mqc
 	}
 
 	if server {
-		if err := call.subscribe(call.clientControlTopic, false); err != nil {
+		if err := cc.subscribe(cc.clientControlTopic, false); err != nil {
 			return nil, err
 		}
-		if err := call.subscribe(call.clientDataTopic, true); err != nil {
+		if err := cc.subscribe(cc.clientDataTopic, true); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := call.subscribe(call.serverControlTopic, false); err != nil {
+		if err := cc.subscribe(cc.serverControlTopic, false); err != nil {
 			return nil, err
 		}
-		if err := call.subscribe(call.serverDataTopic, true); err != nil {
+		if err := cc.subscribe(cc.serverDataTopic, true); err != nil {
 			return nil, err
 		}
 	}
-	return call, nil
+	return cc, nil
 }
 
-func (c *call) Invoke(ctx context.Context) error {
+func (c *callConn) Invoke(ctx context.Context) error {
 	msg := mqc.NewCallMessage(c.method)
 
 	payload, err := c.serializer.Marshal(msg)
@@ -110,7 +113,7 @@ func (c *call) Invoke(ctx context.Context) error {
 	return nil
 }
 
-func (c *call) Recv(ctx context.Context) (*mqc.Message, error) {
+func (c *callConn) Recv(ctx context.Context) (*mqc.Message, error) {
 	if c.err != nil {
 		return nil, c.err
 	}
@@ -123,7 +126,7 @@ func (c *call) Recv(ctx context.Context) (*mqc.Message, error) {
 	}
 }
 
-func (c *call) Send(ctx context.Context, msg *mqc.Message) error {
+func (c *callConn) Send(ctx context.Context, msg *mqc.Message) error {
 	if msg == nil {
 		return errors.New("message is nil")
 	}
@@ -176,7 +179,7 @@ func (c *call) Send(ctx context.Context, msg *mqc.Message) error {
 	}
 }
 
-func (c *call) subscribe(topic string, data bool) error {
+func (c *callConn) subscribe(topic string, data bool) error {
 	token := c.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) {
 		var m mqc.Message
 
@@ -203,13 +206,13 @@ func (c *call) subscribe(topic string, data bool) error {
 	return token.Error()
 }
 
-func (c *call) unsubscribe(topic string) error {
+func (c *callConn) unsubscribe(topic string) error {
 	token := c.client.Unsubscribe(topic)
 	token.Wait()
 	return token.Error()
 }
 
-func (c *call) Close() error {
+func (c *callConn) Close() error {
 	if c.server {
 		err := c.unsubscribe(c.clientControlTopic)
 		if err != nil {

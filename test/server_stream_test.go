@@ -20,13 +20,13 @@ import (
 
 type ServerStreamTestSuite struct {
 	suite.Suite
-	clientConn mqc.Conn
-	serverConn mqc.Conn
+	clientConn mqc.Transport
+	serverConn mqc.Transport
 	serverMock *ServerStreamTestServerMock
 	client     ServerStreamTestClient
 }
 
-func NewServerStreamTestSuite(clientConn, serverConn mqc.Conn) *ServerStreamTestSuite {
+func NewServerStreamTestSuite(clientConn, serverConn mqc.Transport) *ServerStreamTestSuite {
 	client := NewServerStreamTestClient(clientConn)
 
 	return &ServerStreamTestSuite{

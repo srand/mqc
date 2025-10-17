@@ -141,13 +141,13 @@ func generateClient(g *protogen.GeneratedFile, svc *protogen.Service) {
 
 	// generate client struct
 	g.P("type ", typeName, " struct {")
-	g.P("conn mqc.Conn")
+	g.P("transport mqc.Transport")
 	g.P("}")
 	g.P()
 
 	// generate client constructor
-	g.P("func New", svc.GoName, "Client(conn mqc.Conn) *", typeName, " {")
-	g.P("return &", typeName, "{conn: conn}")
+	g.P("func New", svc.GoName, "Client(transport mqc.Transport) *", typeName, " {")
+	g.P("return &", typeName, "{transport: transport}")
 	g.P("}")
 	g.P()
 
@@ -155,13 +155,13 @@ func generateClient(g *protogen.GeneratedFile, svc *protogen.Service) {
 	for _, m := range svc.Methods {
 		g.P("func (c *", typeName, ") ", clientSignature(g, m), " {")
 		if m.Desc.IsStreamingClient() && m.Desc.IsStreamingServer() {
-			g.P("return mqc.NewBidiStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.conn, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"))")
+			g.P("return mqc.NewBidiStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"))")
 		} else if m.Desc.IsStreamingClient() {
-			g.P("return mqc.NewClientStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.conn, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"))")
+			g.P("return mqc.NewClientStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"))")
 		} else if m.Desc.IsStreamingServer() {
-			g.P("return mqc.NewServerStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.conn, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"), req)")
+			g.P("return mqc.NewServerStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"), req)")
 		} else {
-			g.P("return mqc.Rpc[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.conn, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"), req)")
+			g.P("return mqc.Rpc[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"), req)")
 		}
 		g.P("}")
 		g.P()
@@ -191,30 +191,30 @@ func generateServerStub(g *protogen.GeneratedFile, svc *protogen.Service) {
 func generateServerRegistration(g *protogen.GeneratedFile, svc *protogen.Service) {
 	// Create Register function
 	// Handlers are automatically registered
-	g.P("func Register", svc.GoName, "Server(conn mqc.Conn, server ", svc.GoName, "Server) {")
+	g.P("func Register", svc.GoName, "Server(transport mqc.Transport, server ", svc.GoName, "Server) {")
 
 	for _, m := range svc.Methods {
-		g.P("conn.RegisterHandler(\"", svc.GoName, "/", m.GoName, "\", func(call mqc.Call) error {")
+		g.P("transport.RegisterHandler(\"", svc.GoName, "/", m.GoName, "\", func(conn mqc.Conn) error {")
 		if m.Desc.IsStreamingClient() && m.Desc.IsStreamingServer() {
-			g.P("stream, err := mqc.NewBidiStreamServer[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](conn, call)")
+			g.P("stream, err := mqc.NewBidiStreamServer[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](transport, conn)")
 			g.P("if err != nil {")
 			g.P("return err")
 			g.P("}")
 			g.P("return server.", m.GoName, "(stream)")
 		} else if m.Desc.IsStreamingClient() {
-			g.P("stream, err := mqc.NewClientStreamServer[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](conn, call)")
+			g.P("stream, err := mqc.NewClientStreamServer[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](transport, conn)")
 			g.P("if err != nil {")
 			g.P("return err")
 			g.P("}")
 			g.P("return server.", m.GoName, "(stream)")
 		} else if m.Desc.IsStreamingServer() {
-			g.P("stream, req, err := mqc.NewServerStreamServer[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](conn, call)")
+			g.P("stream, req, err := mqc.NewServerStreamServer[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](transport, conn)")
 			g.P("if err != nil {")
 			g.P("return err")
 			g.P("}")
 			g.P("return server.", m.GoName, "(req, stream)")
 		} else {
-			g.P("return mqc.RpcServer(call, conn.Serializer(), func (req *", g.QualifiedGoIdent(m.Input.GoIdent), ") (*", g.QualifiedGoIdent(m.Output.GoIdent), ", error) {")
+			g.P("return mqc.RpcServer(conn, transport.Serializer(), func (req *", g.QualifiedGoIdent(m.Input.GoIdent), ") (*", g.QualifiedGoIdent(m.Output.GoIdent), ", error) {")
 			g.P("return server.", m.GoName, "(req)")
 			g.P("})")
 		}

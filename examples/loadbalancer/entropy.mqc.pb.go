@@ -19,15 +19,15 @@ type EntropyServer interface {
 }
 
 type entropyClient struct {
-	conn mqc.Conn
+	transport mqc.Transport
 }
 
-func NewEntropyClient(conn mqc.Conn) *entropyClient {
-	return &entropyClient{conn: conn}
+func NewEntropyClient(transport mqc.Transport) *entropyClient {
+	return &entropyClient{transport: transport}
 }
 
 func (c *entropyClient) GenerateIntegers(ctx context.Context, req *NumberRequest) (mqc.ServerStreamClient[NumberReply], error) {
-	return mqc.NewServerStreamClient[NumberRequest, NumberReply](ctx, c.conn, mqc.Method("Entropy/GenerateIntegers"), req)
+	return mqc.NewServerStreamClient[NumberRequest, NumberReply](ctx, c.transport, mqc.Method("Entropy/GenerateIntegers"), req)
 }
 
 type UnimplementedEntropyServer struct{}
@@ -36,9 +36,9 @@ func (s *UnimplementedEntropyServer) GenerateIntegers(req *NumberRequest, stream
 	return fmt.Errorf("method GenerateIntegers not implemented")
 }
 
-func RegisterEntropyServer(conn mqc.Conn, server EntropyServer) {
-	conn.RegisterHandler("Entropy/GenerateIntegers", func(call mqc.Call) error {
-		stream, req, err := mqc.NewServerStreamServer[NumberRequest, NumberReply](conn, call)
+func RegisterEntropyServer(transport mqc.Transport, server EntropyServer) {
+	transport.RegisterHandler("Entropy/GenerateIntegers", func(conn mqc.Conn) error {
+		stream, req, err := mqc.NewServerStreamServer[NumberRequest, NumberReply](transport, conn)
 		if err != nil {
 			return err
 		}

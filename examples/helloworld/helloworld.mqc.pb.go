@@ -19,15 +19,15 @@ type GreeterServer interface {
 }
 
 type greeterClient struct {
-	conn mqc.Conn
+	transport mqc.Transport
 }
 
-func NewGreeterClient(conn mqc.Conn) *greeterClient {
-	return &greeterClient{conn: conn}
+func NewGreeterClient(transport mqc.Transport) *greeterClient {
+	return &greeterClient{transport: transport}
 }
 
 func (c *greeterClient) SayHello(ctx context.Context, req *HelloRequest) (*HelloReply, error) {
-	return mqc.Rpc[HelloRequest, HelloReply](ctx, c.conn, mqc.Method("Greeter/SayHello"), req)
+	return mqc.Rpc[HelloRequest, HelloReply](ctx, c.transport, mqc.Method("Greeter/SayHello"), req)
 }
 
 type UnimplementedGreeterServer struct{}
@@ -36,9 +36,9 @@ func (s *UnimplementedGreeterServer) SayHello(req *HelloRequest) (*HelloReply, e
 	return nil, fmt.Errorf("method SayHello not implemented")
 }
 
-func RegisterGreeterServer(conn mqc.Conn, server GreeterServer) {
-	conn.RegisterHandler("Greeter/SayHello", func(call mqc.Call) error {
-		return mqc.RpcServer(call, conn.Serializer(), func(req *HelloRequest) (*HelloReply, error) {
+func RegisterGreeterServer(transport mqc.Transport, server GreeterServer) {
+	transport.RegisterHandler("Greeter/SayHello", func(conn mqc.Conn) error {
+		return mqc.RpcServer(conn, transport.Serializer(), func(req *HelloRequest) (*HelloReply, error) {
 			return server.SayHello(req)
 		})
 	})

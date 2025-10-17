@@ -20,13 +20,13 @@ import (
 
 type BidiStreamTestSuite struct {
 	suite.Suite
-	clientConn mqc.Conn
-	serverConn mqc.Conn
+	clientConn mqc.Transport
+	serverConn mqc.Transport
 	serverMock *BidiStreamTestServerMock
 	client     BidiStreamTestClient
 }
 
-func NewBidiStreamTestSuite(clientConn, serverConn mqc.Conn) *BidiStreamTestSuite {
+func NewBidiStreamTestSuite(clientConn, serverConn mqc.Transport) *BidiStreamTestSuite {
 	client := NewBidiStreamTestClient(clientConn)
 
 	return &BidiStreamTestSuite{

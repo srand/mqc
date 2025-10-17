@@ -74,12 +74,12 @@ type BidiStreamServer[Req any, Res any] interface {
 }
 
 type clientStreamImpl[Req any, Res any] struct {
-	call       Call
+	call       Conn
 	serializer serialization.Serializer
 	eof        bool
 }
 
-func NewClientStreamClient[Req any, Res any](ctx context.Context, conn Conn, method Method) (ClientStreamClient[Req, Res], error) {
+func NewClientStreamClient[Req any, Res any](ctx context.Context, conn Transport, method Method) (ClientStreamClient[Req, Res], error) {
 	call, err := conn.Invoke(ctx, method)
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func NewClientStreamClient[Req any, Res any](ctx context.Context, conn Conn, met
 	return &clientStreamImpl[Req, Res]{call: call, serializer: conn.Serializer()}, nil
 }
 
-func NewServerStreamClient[Req, Res any](ctx context.Context, conn Conn, method Method, req *Req) (ServerStreamClient[Res], error) {
+func NewServerStreamClient[Req, Res any](ctx context.Context, conn Transport, method Method, req *Req) (ServerStreamClient[Res], error) {
 	call, err := conn.Invoke(ctx, method)
 	if err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ func NewServerStreamClient[Req, Res any](ctx context.Context, conn Conn, method 
 	return &clientStreamImpl[any, Res]{call: call, serializer: conn.Serializer()}, nil
 }
 
-func NewBidiStreamClient[Req any, Res any](ctx context.Context, conn Conn, method Method) (BidiStreamClient[Req, Res], error) {
+func NewBidiStreamClient[Req any, Res any](ctx context.Context, conn Transport, method Method) (BidiStreamClient[Req, Res], error) {
 	call, err := conn.Invoke(ctx, method)
 	if err != nil {
 		return nil, err
@@ -176,16 +176,16 @@ func (s *clientStreamImpl[Req, Res]) CloseSend() error {
 }
 
 type serverStreamImpl[Req, Res any] struct {
-	call       Call
+	call       Conn
 	serializer serialization.Serializer
 	eof        bool
 }
 
-func NewClientStreamServer[Req, Res any](conn Conn, call Call) (ClientStreamServer[Req, Res], error) {
+func NewClientStreamServer[Req, Res any](conn Transport, call Conn) (ClientStreamServer[Req, Res], error) {
 	return &serverStreamImpl[Req, Res]{call: call, serializer: conn.Serializer()}, nil
 }
 
-func NewServerStreamServer[Req, Res any](conn Conn, call Call) (ServerStreamServer[Res], *Req, error) {
+func NewServerStreamServer[Req, Res any](conn Transport, call Conn) (ServerStreamServer[Res], *Req, error) {
 	stream := &serverStreamImpl[any, Res]{call: call, serializer: conn.Serializer()}
 
 	// ReaD initial request message
@@ -210,7 +210,7 @@ func NewServerStreamServer[Req, Res any](conn Conn, call Call) (ServerStreamServ
 	return stream, req, nil
 }
 
-func NewBidiStreamServer[Req, Res any](conn Conn, call Call) (BidiStreamServer[Req, Res], error) {
+func NewBidiStreamServer[Req, Res any](conn Transport, call Conn) (BidiStreamServer[Req, Res], error) {
 	return &serverStreamImpl[Req, Res]{call: call, serializer: conn.Serializer()}, nil
 }
 

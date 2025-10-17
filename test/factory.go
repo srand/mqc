@@ -8,13 +8,13 @@ import (
 )
 
 type Factory interface {
-	New() (mqc.Conn, error)
+	New() (mqc.Transport, error)
 }
 
 type TcpFactory struct {
 }
 
-func (f *TcpFactory) New() (mqc.Conn, error) {
+func (f *TcpFactory) New() (mqc.Transport, error) {
 	return tpc.NewTransport(transport.WithAddress("localhost:8080"))
 }
 
@@ -23,7 +23,7 @@ var _ Factory = (*TcpFactory)(nil)
 type UnixFactory struct {
 }
 
-func (f *UnixFactory) New() (mqc.Conn, error) {
+func (f *UnixFactory) New() (mqc.Transport, error) {
 	return tpc.NewTransport(transport.WithProtocol("unix"), transport.WithAddress("/tmp/mqc.sock"))
 }
 
@@ -33,7 +33,7 @@ var _ Factory = (*UnixFactory)(nil)
 type MqttFactory struct {
 }
 
-func (f *MqttFactory) New() (mqc.Conn, error) {
+func (f *MqttFactory) New() (mqc.Transport, error) {
 	return mqtt.NewTransport(transport.WithAddress("localhost:1883"))
 }
 

@@ -20,13 +20,13 @@ type tcpTransport struct {
 	dialOptions *transport.DialOptions
 	conn        net.Conn
 	mux         *yamux.Session
-	handlers    map[mqc.Method]mqc.ServerHandler
+	handlers    map[mqc.Method]mqc.MethodHandler
 	serializer  serialization.Serializer
 }
 
-var _ mqc.Conn = (*tcpTransport)(nil)
+var _ mqc.Transport = (*tcpTransport)(nil)
 
-func NewTransport(options ...transport.DialOption) (mqc.Conn, error) {
+func NewTransport(options ...transport.DialOption) (mqc.Transport, error) {
 	dialOptions := &transport.DialOptions{
 		ConnectTimeout: time.Second * 5,
 		CallTimeout:    time.Second * 5,
@@ -44,7 +44,7 @@ func NewTransport(options ...transport.DialOption) (mqc.Conn, error) {
 	return &tcpTransport{
 		id:          uuid.New(),
 		dialOptions: dialOptions,
-		handlers:    make(map[mqc.Method]mqc.ServerHandler),
+		handlers:    make(map[mqc.Method]mqc.MethodHandler),
 		serializer:  serialization.NewProtoSerializer(),
 	}, nil
 }
@@ -78,7 +78,7 @@ func (t *tcpTransport) accept(mux *yamux.Session) error {
 			return err
 		}
 
-		call := conn_transport.NewCall(conn, t.serializer)
+		call := conn_transport.NewCallConn(conn, t.serializer)
 
 		msg, err := call.Recv(ctx)
 		if err != nil {
@@ -128,7 +128,7 @@ func (t *tcpTransport) Close() error {
 	return nil
 }
 
-func (t *tcpTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Call, error) {
+func (t *tcpTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Conn, error) {
 	if err := t.ensureConnected(); err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (t *tcpTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Call,
 		return nil, err
 	}
 
-	call := conn_transport.NewCall(conn, t.serializer)
+	call := conn_transport.NewCallConn(conn, t.serializer)
 
 	err = call.Send(ctx, mqc.NewCallMessage(method))
 	if err != nil {
@@ -149,7 +149,7 @@ func (t *tcpTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Call,
 	return call, nil
 }
 
-func (t *tcpTransport) RegisterHandler(method mqc.Method, handler mqc.ServerHandler) error {
+func (t *tcpTransport) RegisterHandler(method mqc.Method, handler mqc.MethodHandler) error {
 	t.handlers[method] = handler
 	return nil
 }

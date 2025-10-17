@@ -8,7 +8,7 @@ import (
 
 // Rpc performs a remote procedure call to the specified method with the given request.
 // It sends the request and waits for a response, returning the response object or an error.
-func Rpc[Req any, Res any](ctx context.Context, conn Conn, method Method, req *Req) (*Res, error) {
+func Rpc[Req any, Res any](ctx context.Context, conn Transport, method Method, req *Req) (*Res, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -56,7 +56,7 @@ func Rpc[Req any, Res any](ctx context.Context, conn Conn, method Method, req *R
 // RpcServer handles an incoming RPC call on the server side.
 // It receives the request, processes it using the provided handler function,
 // and sends back the response or an error.
-func RpcServer[Req any, Res any](call Call, serializer serialization.Serializer, handler func(req *Req) (*Res, error)) error {
+func RpcServer[Req any, Res any](call Conn, serializer serialization.Serializer, handler func(req *Req) (*Res, error)) error {
 	ctx := context.Background()
 
 	// Receive request
