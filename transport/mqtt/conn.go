@@ -233,8 +233,7 @@ func (c *callConn) subscribe(topic string, data bool) error {
 		var m mqc.Message
 
 		if data {
-			m.Type = mqc.MsgTypeData
-			m.Data = msg.Payload()
+			m = *mqc.NewDataMessage(msg.Payload())
 		} else {
 			if err := c.serializer.Unmarshal(msg.Payload(), &m); err != nil {
 				return

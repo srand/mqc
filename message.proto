@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package mqc;
+
+option go_package = "./mqc";
+
+message Message {
+    enum Type {
+        INVOKE = 0;
+        ACK = 1;
+        CLOSE = 2;
+        ERROR = 3;
+        DATA = 4;
+    }
+    Type type = 1;
+    bytes data = 2;
+}
