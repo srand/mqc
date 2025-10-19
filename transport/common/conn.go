@@ -69,7 +69,7 @@ func (s *callConn) SendError(ctx context.Context, err error) error {
 	return s.sendControl(ctx, mqc.NewErrorMessage(err))
 }
 
-func (s *callConn) SendMethod(ctx context.Context, method mqc.Method) error {
+func (s *callConn) SendMethod(ctx context.Context, method *mqc.Method) error {
 	return s.sendControl(ctx, mqc.NewCallMessage(method))
 }
 
@@ -102,30 +102,30 @@ func (s *callConn) Recv(ctx context.Context) ([]byte, error) {
 	return msg.DataBytes(), nil
 }
 
-func (s *callConn) RecvMethod(ctx context.Context) (mqc.Method, error) {
+func (s *callConn) RecvMethod(ctx context.Context) (*mqc.Method, error) {
 	var msg *mqc.Message
 
 	if s.err != nil {
-		return "", s.err
+		return nil, s.err
 	}
 
 	select {
 	case msg = <-s.receiver:
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return nil, ctx.Err()
 	}
 
 	if msg == nil || msg.IsClose() {
-		return "", io.EOF
+		return nil, io.EOF
 	}
 
 	if msg.IsError() {
 		s.err = msg.Error()
-		return "", s.err
+		return nil, s.err
 	}
 
 	if !msg.IsCall() {
-		return "", mqc.ErrProtocolViolation
+		return nil, mqc.ErrProtocolViolation
 	}
 
 	return msg.Method(), nil

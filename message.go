@@ -12,10 +12,10 @@ func NewAckMessage() *Message {
 		Type: Message_ACK,
 	}
 }
-func NewCallMessage(method Method) *Message {
+func NewCallMessage(method *Method) *Message {
 	return &Message{
 		Type: Message_INVOKE,
-		Data: []byte(method),
+		Data: []byte(method.String()),
 	}
 }
 
@@ -66,8 +66,8 @@ func (m *Message) Error() error {
 	return nil
 }
 
-func (m *Message) Method() Method {
-	return Method(string(m.Data))
+func (m *Message) Method() *Method {
+	return NewMethodFromString(string(m.Data))
 }
 
 func (m *Message) DataBytes() []byte {

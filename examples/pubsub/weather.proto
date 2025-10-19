@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+option go_package = "examples/pubsub";
+
+package pubsub;
+
+service Weather {
+  rpc Update(stream WeatherUpdate) returns (stream WeatherUpdate);
+}
+
+message WeatherUpdate {
+  string city = 1;
+  float temperature = 2;
+  string condition = 3;
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"unicode"
 
+	"github.com/srand/mqc"
 	"google.golang.org/protobuf/compiler/protogen"
 )
 
@@ -37,6 +38,23 @@ func unexport(name string) string {
 		return ""
 	}
 	return string(unicode.ToLower(rune(name[0]))) + name[1:]
+}
+
+func methodCtor(svc *protogen.Service, m *protogen.Method, methodType int) string {
+	if methodType == mqc.MethodTypePublisher {
+		return fmt.Sprintf("mqc.NewMethod(\"%s/%s\", mqc.MethodTypePublisher)", svc.GoName, m.GoName)
+	}
+	if methodType == mqc.MethodTypeConsumer {
+		return fmt.Sprintf("mqc.NewMethod(\"%s/%s\", mqc.MethodTypeConsumer)", svc.GoName, m.GoName)
+	}
+	if m.Desc.IsStreamingClient() && m.Desc.IsStreamingServer() {
+		return fmt.Sprintf("mqc.NewMethod(\"%s/%s\", mqc.MethodTypeBidiStream)", svc.GoName, m.GoName)
+	} else if m.Desc.IsStreamingClient() {
+		return fmt.Sprintf("mqc.NewMethod(\"%s/%s\", mqc.MethodTypeClientStream)", svc.GoName, m.GoName)
+	} else if m.Desc.IsStreamingServer() {
+		return fmt.Sprintf("mqc.NewMethod(\"%s/%s\", mqc.MethodTypeServerStream)", svc.GoName, m.GoName)
+	}
+	return fmt.Sprintf("mqc.NewMethod(\"%s/%s\", mqc.MethodTypeUnary)", svc.GoName, m.GoName)
 }
 
 func clientStreamInterface(g *protogen.GeneratedFile, method *protogen.Method) string {
@@ -102,11 +120,15 @@ func generateFileContent(g *protogen.GeneratedFile, f *protogen.File) {
 	for _, svc := range f.Services {
 		generateClientInterface(g, svc)
 		generateServerInterface(g, svc)
+		generateConsumerInterface(g, svc)
+		generatePublisherInterface(g, svc)
 	}
 
 	// generate client structs and methods
 	for _, svc := range f.Services {
 		generateClient(g, svc)
+		generateConsumer(g, svc)
+		generatePublisher(g, svc)
 	}
 
 	// generate server structs and methods
@@ -136,6 +158,38 @@ func generateServerInterface(g *protogen.GeneratedFile, svc *protogen.Service) {
 	g.P()
 }
 
+func generateConsumerInterface(g *protogen.GeneratedFile, svc *protogen.Service) {
+	// generate service interface
+	g.P("type ", svc.GoName, "Consumer interface {")
+	for _, m := range svc.Methods {
+		if m.Input != m.Output {
+			continue
+		}
+
+		if m.Desc.IsStreamingClient() && m.Desc.IsStreamingServer() {
+			g.P(m.GoName, "(ctx context.Context) (", clientStreamInterface(g, m), ", error)")
+		}
+	}
+	g.P("}")
+	g.P()
+}
+
+func generatePublisherInterface(g *protogen.GeneratedFile, svc *protogen.Service) {
+	// generate service interface
+	g.P("type ", svc.GoName, "Publisher interface {")
+	for _, m := range svc.Methods {
+		if m.Input != m.Output {
+			continue
+		}
+
+		if m.Desc.IsStreamingClient() && m.Desc.IsStreamingServer() {
+			g.P(m.GoName, "(ctx context.Context) (", serverStreamInterface(g, m), ", error)")
+		}
+	}
+	g.P("}")
+	g.P()
+}
+
 func generateClient(g *protogen.GeneratedFile, svc *protogen.Service) {
 	typeName := unexport(svc.GoName) + "Client"
 
@@ -155,16 +209,76 @@ func generateClient(g *protogen.GeneratedFile, svc *protogen.Service) {
 	for _, m := range svc.Methods {
 		g.P("func (c *", typeName, ") ", clientSignature(g, m), " {")
 		if m.Desc.IsStreamingClient() && m.Desc.IsStreamingServer() {
-			g.P("return mqc.NewBidiStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"))")
+			g.P("return mqc.NewBidiStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, ", methodCtor(svc, m, mqc.MethodTypeBidiStream), ")")
 		} else if m.Desc.IsStreamingClient() {
-			g.P("return mqc.NewClientStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"))")
+			g.P("return mqc.NewClientStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, ", methodCtor(svc, m, mqc.MethodTypeClientStream), ")")
 		} else if m.Desc.IsStreamingServer() {
-			g.P("return mqc.NewServerStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"), req)")
+			g.P("return mqc.NewServerStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, ", methodCtor(svc, m, mqc.MethodTypeServerStream), ", req)")
 		} else {
-			g.P("return mqc.Rpc[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, mqc.Method(\"", svc.GoName, "/", m.GoName, "\"), req)")
+			g.P("return mqc.Rpc[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](ctx, c.transport, ", methodCtor(svc, m, mqc.MethodTypeUnary), ", req)")
 		}
 		g.P("}")
 		g.P()
+	}
+}
+
+func generatePublisher(g *protogen.GeneratedFile, svc *protogen.Service) {
+	typeName := unexport(svc.GoName) + "Publisher"
+
+	// generate publisher struct
+	g.P("type ", typeName, " struct {")
+	g.P("transport mqc.Transport")
+	g.P("}")
+	g.P()
+
+	// generate publisher constructor
+	g.P("func New", svc.GoName, "Publisher(transport mqc.Transport) *", typeName, " {")
+	g.P("return &", typeName, "{transport: transport}")
+	g.P("}")
+	g.P()
+
+	// generate publisher methods
+	for _, m := range svc.Methods {
+		if m.Input != m.Output {
+			continue
+		}
+
+		if m.Desc.IsStreamingClient() && m.Desc.IsStreamingServer() {
+			g.P("func (c *", typeName, ") ", m.GoName, "(ctx context.Context) (mqc.ServerStreamServer[", g.QualifiedGoIdent(m.Input.GoIdent), "], error) {")
+			g.P("return mqc.NewPubSubClient[", g.QualifiedGoIdent(m.Input.GoIdent), "](ctx, c.transport, ", methodCtor(svc, m, mqc.MethodTypePublisher), ")")
+			g.P("}")
+			g.P()
+		}
+	}
+}
+
+func generateConsumer(g *protogen.GeneratedFile, svc *protogen.Service) {
+	typeName := unexport(svc.GoName) + "Consumer"
+
+	// generate consumer struct
+	g.P("type ", typeName, " struct {")
+	g.P("transport mqc.Transport")
+	g.P("}")
+	g.P()
+
+	// generate consumer constructor
+	g.P("func New", svc.GoName, "Consumer(transport mqc.Transport) *", typeName, " {")
+	g.P("return &", typeName, "{transport: transport}")
+	g.P("}")
+	g.P()
+
+	// generate consumer methods
+	for _, m := range svc.Methods {
+		if m.Input != m.Output {
+			continue
+		}
+
+		if m.Desc.IsStreamingClient() && m.Desc.IsStreamingServer() {
+			g.P("func (c *", typeName, ") ", m.GoName, "(ctx context.Context) (mqc.ServerStreamClient[", g.QualifiedGoIdent(m.Input.GoIdent), "], error) {")
+			g.P("return mqc.NewPubSubClient[", g.QualifiedGoIdent(m.Input.GoIdent), "](ctx, c.transport, ", methodCtor(svc, m, mqc.MethodTypeConsumer), ")")
+			g.P("}")
+			g.P()
+		}
 	}
 }
 
@@ -194,7 +308,7 @@ func generateServerRegistration(g *protogen.GeneratedFile, svc *protogen.Service
 	g.P("func Register", svc.GoName, "Server(transport mqc.Transport, server ", svc.GoName, "Server) {")
 
 	for _, m := range svc.Methods {
-		g.P("transport.RegisterHandler(\"", svc.GoName, "/", m.GoName, "\", func(conn mqc.Conn) error {")
+		g.P("transport.RegisterHandler(" + methodCtor(svc, m, -1) + ", func(conn mqc.Conn) error {")
 		if m.Desc.IsStreamingClient() && m.Desc.IsStreamingServer() {
 			g.P("stream, err := mqc.NewBidiStreamServer[", g.QualifiedGoIdent(m.Input.GoIdent), ", ", g.QualifiedGoIdent(m.Output.GoIdent), "](transport, conn)")
 			g.P("if err != nil {")

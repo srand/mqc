@@ -30,20 +30,20 @@ type callConn struct {
 
 var _ mqc.Conn = (*callConn)(nil)
 
-func controlTopic(method mqc.Method, id string) string {
-	return "MQC/" + method.String() + "/Control/" + id
+func controlTopic(method *mqc.Method, id string) string {
+	return "MQC/" + method.Name + "/Control/" + id
 }
 
-func sharedControlTopic(method mqc.Method, id string) string {
-	return "$share/MQC/MQC/" + method.String() + "/Control/" + id
+func sharedControlTopic(method *mqc.Method, id string) string {
+	return "$share/MQC/MQC/" + method.Name + "/Control/" + id
 }
 
-func clientTopic(method mqc.Method, id string, name string) string {
-	return "MQC/" + method.String() + "/Client/" + id + "/" + name
+func clientTopic(method *mqc.Method, id string, name string) string {
+	return "MQC/" + method.Name + "/Client/" + id + "/" + name
 }
 
-func serverTopic(method mqc.Method, id string, name string) string {
-	return "MQC/" + method.String() + "/Server/" + id + "/" + name
+func serverTopic(method *mqc.Method, id string, name string) string {
+	return "MQC/" + method.Name + "/Server/" + id + "/" + name
 }
 
 func extractTopicId(topic string) string {
@@ -54,12 +54,12 @@ func extractTopicId(topic string) string {
 	return parts[len(parts)-1]
 }
 
-func newCallConn(serializer serialization.Serializer, client mqtt.Client, method mqc.Method, id string, server bool) (*callConn, error) {
+func newConn(serializer serialization.Serializer, client mqtt.Client, method *mqc.Method, id string, server bool) (*callConn, error) {
 	receiver := make(chan *mqc.Message, 1)
 	cc := &callConn{
 		client:             client,
 		receiver:           receiver,
-		method:             method,
+		method:             *method,
 		id:                 id,
 		clientControlTopic: clientTopic(method, id, "Control"),
 		clientDataTopic:    clientTopic(method, id, "Data"),
@@ -85,11 +85,12 @@ func newCallConn(serializer serialization.Serializer, client mqtt.Client, method
 			return nil, err
 		}
 	}
+
 	return cc, nil
 }
 
 func (c *callConn) Invoke(ctx context.Context) error {
-	msg := mqc.NewCallMessage(c.method)
+	msg := mqc.NewCallMessage(&c.method)
 
 	payload, err := c.serializer.Marshal(msg)
 	if err != nil {

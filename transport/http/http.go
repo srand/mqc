@@ -102,7 +102,11 @@ func (t *websocketTransport) Serve() error {
 	return server.ListenAndServe()
 }
 
-func (t *websocketTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Conn, error) {
+func (t *websocketTransport) Invoke(ctx context.Context, method *mqc.Method) (mqc.Conn, error) {
+	if method.IsPubSub() {
+		return nil, mqc.ErrPubSubNotSupported
+	}
+
 	if err := t.ensureConnected(); err != nil {
 		return nil, err
 	}

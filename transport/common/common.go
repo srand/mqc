@@ -16,13 +16,13 @@ type BaseTransport struct {
 	Serialize serialization.Serializer
 }
 
-func (t *BaseTransport) RegisterHandler(method mqc.Method, handler mqc.MethodHandler) error {
-	t.Handlers[method] = handler
+func (t *BaseTransport) RegisterHandler(method *mqc.Method, handler mqc.MethodHandler) error {
+	t.Handlers[*method] = handler
 	return nil
 }
 
-func (t *BaseTransport) UnregisterHandler(method mqc.Method) error {
-	delete(t.Handlers, method)
+func (t *BaseTransport) UnregisterHandler(method *mqc.Method) error {
+	delete(t.Handlers, *method)
 	return nil
 }
 
@@ -48,7 +48,7 @@ func (t *BaseTransport) AcceptMux(mux *yamux.Session) error {
 				return
 			}
 
-			handler, ok := t.Handlers[method]
+			handler, ok := t.Handlers[*method]
 			if !ok {
 				conn.Close()
 				return
@@ -71,7 +71,7 @@ func (t *BaseTransport) AcceptMux(mux *yamux.Session) error {
 	}
 }
 
-func (t *BaseTransport) InvokeMux(ctx context.Context, mux *yamux.Session, method mqc.Method) (mqc.Conn, error) {
+func (t *BaseTransport) InvokeMux(ctx context.Context, mux *yamux.Session, method *mqc.Method) (mqc.Conn, error) {
 	conn, err := mux.Open()
 	if err != nil {
 		return nil, err

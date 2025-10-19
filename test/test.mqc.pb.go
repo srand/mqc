@@ -7,6 +7,7 @@ package test
 import (
 	"context"
 	"fmt"
+
 	"github.com/srand/mqc"
 )
 
@@ -51,7 +52,7 @@ func NewRpcTestClient(transport mqc.Transport) *rpcTestClient {
 }
 
 func (c *rpcTestClient) Rpc(ctx context.Context, req *TestRequest) (*TestReply, error) {
-	return mqc.Rpc[TestRequest, TestReply](ctx, c.transport, mqc.Method("RpcTest/Rpc"), req)
+	return mqc.Rpc[TestRequest, TestReply](ctx, c.transport, mqc.NewMethod("RpcTest/Rpc", mqc.MethodTypeUnary), req)
 }
 
 type serverStreamTestClient struct {
@@ -63,7 +64,7 @@ func NewServerStreamTestClient(transport mqc.Transport) *serverStreamTestClient 
 }
 
 func (c *serverStreamTestClient) Stream(ctx context.Context, req *TestRequest) (mqc.ServerStreamClient[TestReply], error) {
-	return mqc.NewServerStreamClient[TestRequest, TestReply](ctx, c.transport, mqc.Method("ServerStreamTest/Stream"), req)
+	return mqc.NewServerStreamClient[TestRequest, TestReply](ctx, c.transport, mqc.NewMethod("ServerStreamTest/Stream", mqc.MethodTypeServerStream), req)
 }
 
 type clientStreamTestClient struct {
@@ -75,7 +76,7 @@ func NewClientStreamTestClient(transport mqc.Transport) *clientStreamTestClient 
 }
 
 func (c *clientStreamTestClient) Stream(ctx context.Context) (mqc.ClientStreamClient[TestRequest, TestReply], error) {
-	return mqc.NewClientStreamClient[TestRequest, TestReply](ctx, c.transport, mqc.Method("ClientStreamTest/Stream"))
+	return mqc.NewClientStreamClient[TestRequest, TestReply](ctx, c.transport, mqc.NewMethod("ClientStreamTest/Stream", mqc.MethodTypeClientStream))
 }
 
 type bidiStreamTestClient struct {
@@ -87,7 +88,7 @@ func NewBidiStreamTestClient(transport mqc.Transport) *bidiStreamTestClient {
 }
 
 func (c *bidiStreamTestClient) Stream(ctx context.Context) (mqc.BidiStreamClient[TestRequest, TestReply], error) {
-	return mqc.NewBidiStreamClient[TestRequest, TestReply](ctx, c.transport, mqc.Method("BidiStreamTest/Stream"))
+	return mqc.NewBidiStreamClient[TestRequest, TestReply](ctx, c.transport, mqc.NewMethod("BidiStreamTest/Stream", mqc.MethodTypeBidiStream))
 }
 
 type UnimplementedRpcTestServer struct{}
@@ -97,7 +98,7 @@ func (s *UnimplementedRpcTestServer) Rpc(req *TestRequest) (*TestReply, error) {
 }
 
 func RegisterRpcTestServer(transport mqc.Transport, server RpcTestServer) {
-	transport.RegisterHandler("RpcTest/Rpc", func(conn mqc.Conn) error {
+	transport.RegisterHandler(mqc.NewMethod("RpcTest/Rpc", mqc.MethodTypeUnary), func(conn mqc.Conn) error {
 		return mqc.RpcServer(conn, transport.Serializer(), func(req *TestRequest) (*TestReply, error) {
 			return server.Rpc(req)
 		})
@@ -111,7 +112,7 @@ func (s *UnimplementedServerStreamTestServer) Stream(req *TestRequest, stream mq
 }
 
 func RegisterServerStreamTestServer(transport mqc.Transport, server ServerStreamTestServer) {
-	transport.RegisterHandler("ServerStreamTest/Stream", func(conn mqc.Conn) error {
+	transport.RegisterHandler(mqc.NewMethod("ServerStreamTest/Stream", mqc.MethodTypeServerStream), func(conn mqc.Conn) error {
 		stream, req, err := mqc.NewServerStreamServer[TestRequest, TestReply](transport, conn)
 		if err != nil {
 			return err
@@ -127,7 +128,7 @@ func (s *UnimplementedClientStreamTestServer) Stream(stream mqc.ClientStreamServ
 }
 
 func RegisterClientStreamTestServer(transport mqc.Transport, server ClientStreamTestServer) {
-	transport.RegisterHandler("ClientStreamTest/Stream", func(conn mqc.Conn) error {
+	transport.RegisterHandler(mqc.NewMethod("ClientStreamTest/Stream", mqc.MethodTypeClientStream), func(conn mqc.Conn) error {
 		stream, err := mqc.NewClientStreamServer[TestRequest, TestReply](transport, conn)
 		if err != nil {
 			return err
@@ -143,7 +144,7 @@ func (s *UnimplementedBidiStreamTestServer) Stream(stream mqc.BidiStreamServer[T
 }
 
 func RegisterBidiStreamTestServer(transport mqc.Transport, server BidiStreamTestServer) {
-	transport.RegisterHandler("BidiStreamTest/Stream", func(conn mqc.Conn) error {
+	transport.RegisterHandler(mqc.NewMethod("BidiStreamTest/Stream", mqc.MethodTypeBidiStream), func(conn mqc.Conn) error {
 		stream, err := mqc.NewBidiStreamServer[TestRequest, TestReply](transport, conn)
 		if err != nil {
 			return err

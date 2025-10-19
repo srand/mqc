@@ -71,7 +71,7 @@ func (p *pahoTransport) ensureConnected() error {
 	}
 
 	for method := range p.handlers {
-		if err := p.subscribe(method); err != nil {
+		if err := p.subscribe(&method); err != nil {
 			return err
 		}
 	}
@@ -88,32 +88,40 @@ func (p *pahoTransport) Close() error {
 	return nil
 }
 
-func (p *pahoTransport) Invoke(ctx context.Context, method mqc.Method) (mqc.Conn, error) {
+func (p *pahoTransport) Invoke(ctx context.Context, method *mqc.Method) (mqc.Conn, error) {
 	if err := p.ensureConnected(); err != nil {
 		return nil, err
 	}
 
-	call, err := newCallConn(p.serializer, p.mqttClient, method, uuid.New().String(), false)
+	if !p.mqttClient.IsConnected() {
+		return nil, fmt.Errorf("mqtt client is not connected")
+	}
+
+	if method.IsPubSub() {
+		return newPubSubConn(p.serializer, p.mqttClient, method)
+	}
+
+	conn, err := newConn(p.serializer, p.mqttClient, method, uuid.New().String(), false)
 	if err != nil {
 		return nil, err
 	}
 
-	err = call.Invoke(ctx)
+	err = conn.Invoke(ctx)
 	if err != nil {
-		call.Close()
+		conn.Close()
 		return nil, err
 	}
 
-	return call, nil
+	return conn, nil
 }
 
-func (p *pahoTransport) RegisterHandler(method mqc.Method, handler mqc.MethodHandler) error {
-	p.handlers[method] = handler
+func (p *pahoTransport) RegisterHandler(method *mqc.Method, handler mqc.MethodHandler) error {
+	p.handlers[*method] = handler
 	return nil
 }
 
-func (p *pahoTransport) UnregisterHandler(method mqc.Method) error {
-	delete(p.handlers, method)
+func (p *pahoTransport) UnregisterHandler(method *mqc.Method) error {
+	delete(p.handlers, *method)
 	return nil
 }
 
@@ -136,7 +144,7 @@ func (p *pahoTransport) Serializer() serialization.Serializer {
 	return p.serializer
 }
 
-func (p *pahoTransport) subscribe(method mqc.Method) error {
+func (p *pahoTransport) subscribe(method *mqc.Method) error {
 	topic := sharedControlTopic(method, "+")
 
 	token := p.mqttClient.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) {
@@ -150,12 +158,12 @@ func (p *pahoTransport) subscribe(method mqc.Method) error {
 			return
 		}
 
-		handler, ok := p.handlers[m.Method()]
+		handler, ok := p.handlers[*m.Method()]
 		if !ok {
 			return
 		}
 
-		call, err := newCallConn(p.serializer, p.mqttClient, method, extractTopicId(msg.Topic()), true)
+		conn, err := newConn(p.serializer, p.mqttClient, method, extractTopicId(msg.Topic()), true)
 		if err != nil {
 			return
 		}
@@ -167,24 +175,23 @@ func (p *pahoTransport) subscribe(method mqc.Method) error {
 				}
 			}()
 
-			defer call.Close()
+			defer conn.Close()
 
 			ctx, cancel := context.WithTimeout(context.Background(), p.options.CallTimeout)
 			defer cancel()
 
 			// Ack the received message
-			if err := call.SendAck(ctx); err != nil {
+			if err := conn.SendAck(ctx); err != nil {
 				return
 			}
 
 			ctx, cancel = context.WithTimeout(context.Background(), p.options.CallTimeout)
 			defer cancel()
 
-			err := handler(call)
-			if err != nil {
-				call.SendError(ctx, err)
+			if err := handler(conn); err != nil {
+				conn.SendError(ctx, err)
 			} else {
-				call.SendClose(ctx)
+				conn.SendClose(ctx)
 			}
 		}()
 	})

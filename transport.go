@@ -20,10 +20,10 @@ type Transport interface {
 	Dial() error
 
 	// Invoke creates a new connection object for the given method.
-	Invoke(ctx context.Context, method Method) (Conn, error)
+	Invoke(ctx context.Context, method *Method) (Conn, error)
 
 	// RegisterHandler registers a new handler for the given method.
-	RegisterHandler(method Method, handler MethodHandler) error
+	RegisterHandler(method *Method, handler MethodHandler) error
 
 	// Serializer returns the serializer used for marshaling and unmarshaling messages.
 	Serializer() serialization.Serializer

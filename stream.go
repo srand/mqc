@@ -80,7 +80,7 @@ type clientStreamImpl[Req any, Res any] struct {
 	eof        bool
 }
 
-func NewClientStreamClient[Req any, Res any](ctx context.Context, transport Transport, method Method) (ClientStreamClient[Req, Res], error) {
+func NewClientStreamClient[Req any, Res any](ctx context.Context, transport Transport, method *Method) (ClientStreamClient[Req, Res], error) {
 	call, err := transport.Invoke(ctx, method)
 	if err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func NewClientStreamClient[Req any, Res any](ctx context.Context, transport Tran
 	return &clientStreamImpl[Req, Res]{call: call, serializer: transport.Serializer()}, nil
 }
 
-func NewServerStreamClient[Req, Res any](ctx context.Context, transport Transport, method Method, req *Req) (ServerStreamClient[Res], error) {
+func NewServerStreamClient[Req, Res any](ctx context.Context, transport Transport, method *Method, req *Req) (ServerStreamClient[Res], error) {
 	serializer := transport.Serializer()
 
 	call, err := transport.Invoke(ctx, method)
@@ -110,7 +110,7 @@ func NewServerStreamClient[Req, Res any](ctx context.Context, transport Transpor
 	return &clientStreamImpl[any, Res]{call: call, serializer: serializer}, nil
 }
 
-func NewBidiStreamClient[Req any, Res any](ctx context.Context, transport Transport, method Method) (BidiStreamClient[Req, Res], error) {
+func NewBidiStreamClient[Req any, Res any](ctx context.Context, transport Transport, method *Method) (BidiStreamClient[Req, Res], error) {
 	call, err := transport.Invoke(ctx, method)
 	if err != nil {
 		return nil, err

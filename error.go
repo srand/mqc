@@ -2,9 +2,10 @@ package mqc
 
 var (
 	// ErrNoAddress indicates that no address was provided to connect to.
-	ErrNoAddress         = &Error{"no address provided"}
-	ErrProtocolViolation = &Error{"protocol violation"}
-	ErrNilRequest        = &Error{"nil request"}
+	ErrNoAddress          = &Error{"no address provided"}
+	ErrProtocolViolation  = &Error{"protocol violation"}
+	ErrNilRequest         = &Error{"nil request"}
+	ErrPubSubNotSupported = &Error{"pub/sub not supported by this transport"}
 )
 
 // Error represents an error in the mqc package.

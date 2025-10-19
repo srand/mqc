@@ -8,7 +8,7 @@ import (
 
 // Rpc performs a remote procedure call to the specified method with the given request.
 // It sends the request and waits for a response, returning the response object or an error.
-func Rpc[Req any, Res any](ctx context.Context, transport Transport, method Method, req *Req) (*Res, error) {
+func Rpc[Req any, Res any](ctx context.Context, transport Transport, method *Method, req *Req) (*Res, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
